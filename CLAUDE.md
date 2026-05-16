@@ -58,7 +58,7 @@ sttmount/
 │   │   └── maps/          # PDF/圖片（依出隊名分子資料夾）
 │   └── templates/
 │       ├── base.html
-│       ├── index.html         # 台灣縣市地圖（目前為格狀，之後改 SVG）
+│       ├── index.html         # 首頁（D3.js SVG 地圖 / 日期 / 搜尋 + 動態結果）
 │       ├── region.html        # 縣市內子地區列表
 │       ├── expedition_list.html
 │       ├── expedition.html    # 出隊詳細頁（地圖、PDF、紀錄、隊員）
@@ -89,7 +89,7 @@ sttmount/
 
 ```sql
 expeditions  (id, name, date_start, date_end, county, region, description)
-members      (id, expedition_id, name, role)
+members      (id, expedition_id, name, role, department, experience)
 gpx_files    (id, expedition_id, filename, file_path)
 map_files    (id, expedition_id, filename, file_path, file_type)
 records      (id, expedition_id, filename, content)
@@ -115,7 +115,7 @@ records      (id, expedition_id, filename, content)
 | 假資料種子腳本 | ✅ 完成（seed.py + gen_gpx.py） |
 | GitHub Actions CI/CD | ✅ 完成（`.github/workflows/ci.yml`，Node.js 24） |
 | Excel 正規化腳本 | ⏳ 待 Excel 範例 |
-| 台灣 SVG 地圖（首頁縣市格改為 SVG） | ⏳ 待實作 |
+| 台灣 SVG 地圖（D3.js + Canvas hit-testing） | ✅ 完成 |
 | Server 部署文件 | ⏳ 待實作 |
 
 ---
