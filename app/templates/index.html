@@ -5,12 +5,13 @@
 {% block head %}
 <script src="https://cdn.jsdelivr.net/npm/d3@7/dist/d3.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/topojson-client@3/dist/topojson-client.js"></script>
+<style>body { overflow: hidden; }</style>
 {% endblock %}
 
 {% block content %}
 
 {# ── 左半：模式切換 ── #}
-<div class="w-1/2 flex flex-col overflow-hidden border-r border-gray-100" style="height: calc(100vh - 65px);">
+<div class="w-1/2 flex flex-col overflow-hidden border-r border-gray-100">
 
   {# Tab 列 #}
   <div class="flex shrink-0 border-b border-gray-100">
@@ -77,7 +78,7 @@
 </div>
 
 {# ── 右半：結果 ── #}
-<div id="results" class="w-1/2 overflow-y-auto px-6 pt-[60px] pb-6 space-y-3" style="height: calc(100vh - 65px);"></div>
+<div id="results" class="w-1/2 overflow-y-auto px-6 pt-[60px] pb-6 space-y-3"></div>
 
 <script>
   const INITIAL_MODE = "{{ initial_mode }}";
