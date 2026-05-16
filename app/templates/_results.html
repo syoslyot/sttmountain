@@ -1,10 +1,10 @@
 {% if items %}
   {% for exp in items %}
   <a href="/expedition/{{ exp.id }}"
-     class="flex flex-col bg-white border border-gray-100 px-6 py-5 shadow-sm
+     class="flex flex-col bg-white border border-gray-100 px-5 py-3 shadow-sm
             hover:border-[#5a7c50] hover:bg-[#eef3eb] transition group block">
     <div class="flex items-baseline justify-between gap-2">
-      <span class="font-bold text-gray-700 text-[20px] group-hover:text-[#4a6741] truncate">{{ exp.name }}</span>
+      <span class="text-gray-700 text-[21px] group-hover:text-[#4a6741] truncate">{{ exp.name }}</span>
       {% if exp.leader_name %}
       <span class="text-[15px] text-gray-700 shrink-0 tracking-wide">{{ exp.leader_name }}</span>
       {% endif %}
