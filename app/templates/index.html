@@ -123,7 +123,7 @@
         g.selectAll("path")
           .data(counties.features).join("path")
           .attr("d", path)
-          .attr("fill", d => ISLANDS.has(d.properties.COUNTYNAME) ? "#f3f4f6" : "#eef3eb")
+          .attr("fill", d => ISLANDS.has(d.properties.COUNTYNAME) ? "#f3f4f6" : "#6b8a5e")
           .attr("stroke", d => ISLANDS.has(d.properties.COUNTYNAME) ? "#e5e7eb" : "#d1d5db")
           .attr("stroke-width", 0.5)
           .style("pointer-events", "none");
@@ -154,14 +154,14 @@
             if (hoveredFeature) {
               const prev = COUNTY_NORMALIZE[hoveredFeature.properties.COUNTYNAME];
               if (prev !== selectedCounty)
-                g.selectAll("path").filter(p => p === hoveredFeature).attr("fill", "#eef3eb");
+                g.selectAll("path").filter(p => p === hoveredFeature).attr("fill", "#6b8a5e");
             }
             hoveredFeature = found;
             if (found) {
               svg.style("cursor", "pointer");
               const display = COUNTY_NORMALIZE[found.properties.COUNTYNAME];
               if (display !== selectedCounty)
-                g.selectAll("path").filter(p => p === found).attr("fill", "#9ab88a");
+                g.selectAll("path").filter(p => p === found).attr("fill", "#4a6741");
             } else {
               svg.style("cursor", "default");
             }
@@ -170,7 +170,7 @@
             if (hoveredFeature) {
               const prev = COUNTY_NORMALIZE[hoveredFeature.properties.COUNTYNAME];
               if (prev !== selectedCounty)
-                g.selectAll("path").filter(p => p === hoveredFeature).attr("fill", "#eef3eb");
+                g.selectAll("path").filter(p => p === hoveredFeature).attr("fill", "#6b8a5e");
               hoveredFeature = null;
             }
             svg.style("cursor", "default");
@@ -181,8 +181,8 @@
             if (!found) return;
             const display = COUNTY_NORMALIZE[found.properties.COUNTYNAME];
             if (!display) return;
-            g.selectAll("path").attr("fill", p => ISLANDS.has(p.properties.COUNTYNAME) ? "#f3f4f6" : "#eef3eb");
-            g.selectAll("path").filter(p => p === found).attr("fill", "#5a7c50");
+            g.selectAll("path").attr("fill", p => ISLANDS.has(p.properties.COUNTYNAME) ? "#f3f4f6" : "#6b8a5e");
+            g.selectAll("path").filter(p => p === found).attr("fill", "#4a6741");
             selectedCounty = display;
             loadCounty(display);
           });
@@ -205,7 +205,7 @@
       if (visualLayer)
         visualLayer.selectAll("path")
           .filter(d => !ISLANDS.has(d.properties.COUNTYNAME))
-          .attr("fill", "#eef3eb");
+          .attr("fill", "#6b8a5e");
     }
   }
 
