@@ -5,7 +5,27 @@
 {% block head %}
 <script src="https://cdn.jsdelivr.net/npm/d3@7/dist/d3.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/topojson-client@3/dist/topojson-client.js"></script>
-<style>body { overflow: hidden; }</style>
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/flatpickr/dist/flatpickr.min.css">
+<script src="https://cdn.jsdelivr.net/npm/flatpickr"></script>
+<style>
+body { overflow: hidden; }
+.flatpickr-day.selected,.flatpickr-day.startRange,.flatpickr-day.endRange,
+.flatpickr-day.selected:hover,.flatpickr-day.startRange:hover,.flatpickr-day.endRange:hover {
+  background: #5a7c50; border-color: #5a7c50; color: #fff;
+}
+.flatpickr-day.inRange {
+  background: #c8dcc0 !important;
+  box-shadow: -5px 0 0 #c8dcc0, 5px 0 0 #c8dcc0 !important;
+  border-color: transparent !important;
+}
+.flatpickr-day:hover:not(.selected):not(.inRange):not(.startRange):not(.endRange) {
+  background: #eef3eb; border-color: #eef3eb;
+}
+.flatpickr-months .flatpickr-prev-month:hover svg,
+.flatpickr-months .flatpickr-next-month:hover svg { fill: #5a7c50; }
+.flatpickr-current-month .numInputWrapper span.arrowUp:after { border-bottom-color: #5a7c50; }
+.flatpickr-current-month .numInputWrapper span.arrowDown:after { border-top-color: #5a7c50; }
+</style>
 {% endblock %}
 
 {% block content %}
@@ -35,57 +55,38 @@
   </div>
 
   {# 日期模式 #}
-  <div id="mode-date" class="hidden flex-1 overflow-y-auto">
-    <div class="flex flex-col h-full justify-center px-8 gap-10">
+  <div id="mode-date" class="hidden flex-1 overflow-hidden">
+    <div class="flex h-full">
 
-      <div class="grid grid-cols-2 gap-1.5">
-        <button onclick="selectPreset(this); loadPreset(1,'month')"
-                class="preset-btn border border-[#c8d8c0] rounded-lg py-1.5 text-[21px] text-gray-600 hover:border-[#5a7c50] hover:text-[#5a7c50] transition">
+      {# 左側 Preset 欄 #}
+      <div class="flex flex-col gap-1 py-6 px-3 w-36 shrink-0 border-r border-gray-100 justify-center">
+        <p class="text-[11px] text-gray-400 tracking-[0.15em] px-3 mb-2">快速選擇</p>
+        <button onclick="applyPreset(this,1,'month')"
+                class="preset-btn text-left px-3 py-2 rounded-lg text-[15px] text-gray-600 hover:bg-gray-100 transition w-full">
           最近一個月
         </button>
-        <button onclick="selectPreset(this); loadPreset(6,'month')"
-                class="preset-btn border border-[#c8d8c0] rounded-lg py-1.5 text-[21px] text-gray-600 hover:border-[#5a7c50] hover:text-[#5a7c50] transition">
+        <button onclick="applyPreset(this,6,'month')"
+                class="preset-btn text-left px-3 py-2 rounded-lg text-[15px] text-gray-600 hover:bg-gray-100 transition w-full">
           最近半年
         </button>
-        <button onclick="selectPreset(this); loadPreset(1,'year')"
-                class="preset-btn border border-[#c8d8c0] rounded-lg py-1.5 text-[21px] text-gray-600 hover:border-[#5a7c50] hover:text-[#5a7c50] transition">
+        <button onclick="applyPreset(this,1,'year')"
+                class="preset-btn text-left px-3 py-2 rounded-lg text-[15px] text-gray-600 hover:bg-gray-100 transition w-full">
           最近一年
         </button>
-        <button onclick="selectPreset(this); loadPreset(3,'year')"
-                class="preset-btn border border-[#c8d8c0] rounded-lg py-1.5 text-[21px] text-gray-600 hover:border-[#5a7c50] hover:text-[#5a7c50] transition">
+        <button onclick="applyPreset(this,3,'year')"
+                class="preset-btn text-left px-3 py-2 rounded-lg text-[15px] text-gray-600 hover:bg-gray-100 transition w-full">
           最近三年
         </button>
       </div>
 
-      <div class="flex flex-col gap-4">
-        <div class="flex items-center gap-3">
-          <div class="flex-1 h-px bg-gray-200"></div>
-          <span class="text-[15px] text-gray-400 tracking-[0.15em]">自訂區間</span>
-          <div class="flex-1 h-px bg-gray-200"></div>
-        </div>
-
-        <div class="flex items-center gap-3">
-          <div class="flex-1 flex items-center gap-2 border border-gray-200 rounded-lg px-3 py-2 focus-within:border-[#5a7c50] transition">
-            <svg class="w-5 h-5 text-gray-400 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5"
-                    d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z"/>
-            </svg>
-            <input id="date-from" type="date" onchange="loadDate()"
-                   class="flex-1 text-[21px] focus:outline-none bg-transparent text-gray-600 min-w-0">
-          </div>
-          <span class="text-gray-300 shrink-0">—</span>
-          <div class="flex-1 flex items-center gap-2 border border-gray-200 rounded-lg px-3 py-2 focus-within:border-[#5a7c50] transition">
-            <svg class="w-5 h-5 text-gray-400 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5"
-                    d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z"/>
-            </svg>
-            <input id="date-to" type="date" onchange="loadDate()"
-                   class="flex-1 text-[21px] focus:outline-none bg-transparent text-gray-600 min-w-0">
-          </div>
-        </div>
+      {# 右側日曆區（Flatpickr inline） #}
+      <div class="flex-1 flex items-center justify-center overflow-hidden py-4">
+        <div id="fp-calendar"></div>
       </div>
 
     </div>
+    <input id="date-from" type="hidden">
+    <input id="date-to" type="hidden">
   </div>
 
   {# 搜尋模式 #}
@@ -258,9 +259,29 @@
     pageLoading = false;
   }
 
+  let fp = null;
+
   document.addEventListener('DOMContentLoaded', () => {
-    document.getElementById('date-from').value = DATE_MIN;
-    document.getElementById('date-to').value   = DATE_MAX;
+    const fmt = d => d.toISOString().slice(0, 10);
+
+    fp = flatpickr('#fp-calendar', {
+      mode: 'range',
+      inline: true,
+      showMonths: 1,
+      defaultDate: DATE_MIN && DATE_MAX ? [DATE_MIN, DATE_MAX] : undefined,
+      onChange(selectedDates) {
+        if (selectedDates.length < 2) return;
+        document.getElementById('date-from').value = fmt(selectedDates[0]);
+        document.getElementById('date-to').value   = fmt(selectedDates[1]);
+        loadDate();
+      },
+    });
+
+    if (DATE_MIN && DATE_MAX) {
+      document.getElementById('date-from').value = DATE_MIN;
+      document.getElementById('date-to').value   = DATE_MAX;
+      loadDate();
+    }
 
     document.getElementById('results').addEventListener('scroll', () => {
       const r = document.getElementById('results');
@@ -284,23 +305,19 @@
     updateResults(url);
   }
 
-  function selectPreset(el) {
+  function applyPreset(el, n, unit) {
     document.querySelectorAll('.preset-btn').forEach(b => {
-      b.classList.remove('text-[#5a7c50]', 'border-[#5a7c50]');
-      b.classList.add('text-gray-600', 'border-[#c8d8c0]');
+      b.classList.remove('bg-[#5a7c50]', 'text-white');
+      b.classList.add('text-gray-600');
     });
-    el.classList.remove('text-gray-600', 'border-[#c8d8c0]');
-    el.classList.add('text-[#5a7c50]', 'border-[#5a7c50]');
-  }
+    el.classList.remove('text-gray-600');
+    el.classList.add('bg-[#5a7c50]', 'text-white');
 
-  function loadPreset(n, unit) {
-    const today = new Date();
-    const from  = new Date(today);
+    const to   = new Date();
+    const from = new Date();
     if (unit === 'month') from.setMonth(from.getMonth() - n);
     else                   from.setFullYear(from.getFullYear() - n);
-    document.getElementById('date-from').value = from.toISOString().slice(0, 10);
-    document.getElementById('date-to').value   = today.toISOString().slice(0, 10);
-    loadDate();
+    if (fp) fp.setDate([from, to], true);
   }
 
   function loadSearch() {
