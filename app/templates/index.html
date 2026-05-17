@@ -35,33 +35,57 @@
   </div>
 
   {# 日期模式 #}
-  <div id="mode-date" class="hidden flex-1 overflow-y-auto p-5">
-    <div class="flex flex-col gap-3">
-      <div class="grid grid-cols-4 gap-1.5">
-        <button onclick="loadPreset(1,'month')"
-                class="border border-gray-200 rounded-lg py-1.5 text-xs text-gray-600 hover:bg-[#eef3eb] hover:border-[#5a7c50] hover:text-[#4a6741] transition">
-          最近一個月
-        </button>
-        <button onclick="loadPreset(6,'month')"
-                class="border border-gray-200 rounded-lg py-1.5 text-xs text-gray-600 hover:bg-[#eef3eb] hover:border-[#5a7c50] hover:text-[#4a6741] transition">
-          最近半年
-        </button>
-        <button onclick="loadPreset(1,'year')"
-                class="border border-gray-200 rounded-lg py-1.5 text-xs text-gray-600 hover:bg-[#eef3eb] hover:border-[#5a7c50] hover:text-[#4a6741] transition">
-          最近一年
-        </button>
-        <button onclick="loadPreset(3,'year')"
-                class="border border-gray-200 rounded-lg py-1.5 text-xs text-gray-600 hover:bg-[#eef3eb] hover:border-[#5a7c50] hover:text-[#4a6741] transition">
-          最近三年
-        </button>
+  <div id="mode-date" class="hidden flex-1 overflow-y-auto">
+    <div class="flex flex-col h-full justify-center px-8 gap-6">
+
+      <div>
+        <p class="text-[11px] text-gray-400 tracking-[0.15em] mb-3">快速選擇</p>
+        <div class="grid grid-cols-2 gap-2">
+          <button onclick="loadPreset(1,'month')"
+                  class="border border-[#c8d8c0] rounded-lg py-3 text-sm text-[#5a7c50] hover:bg-[#5a7c50] hover:text-white hover:border-[#5a7c50] transition">
+            最近一個月
+          </button>
+          <button onclick="loadPreset(6,'month')"
+                  class="border border-[#c8d8c0] rounded-lg py-3 text-sm text-[#5a7c50] hover:bg-[#5a7c50] hover:text-white hover:border-[#5a7c50] transition">
+            最近半年
+          </button>
+          <button onclick="loadPreset(1,'year')"
+                  class="border border-[#c8d8c0] rounded-lg py-3 text-sm text-[#5a7c50] hover:bg-[#5a7c50] hover:text-white hover:border-[#5a7c50] transition">
+            最近一年
+          </button>
+          <button onclick="loadPreset(3,'year')"
+                  class="border border-[#c8d8c0] rounded-lg py-3 text-sm text-[#5a7c50] hover:bg-[#5a7c50] hover:text-white hover:border-[#5a7c50] transition">
+            最近三年
+          </button>
+        </div>
       </div>
-      <div class="flex items-center gap-2">
-        <input id="date-from" type="date" onchange="loadDate()"
-               class="flex-1 border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-[#5a7c50]">
-        <span class="text-gray-400 text-sm shrink-0">～</span>
-        <input id="date-to" type="date" onchange="loadDate()"
-               class="flex-1 border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-[#5a7c50]">
+
+      <div class="flex items-center gap-3">
+        <div class="flex-1 h-px bg-gray-200"></div>
+        <span class="text-[11px] text-gray-400 tracking-[0.15em]">自訂區間</span>
+        <div class="flex-1 h-px bg-gray-200"></div>
       </div>
+
+      <div class="flex items-center gap-3">
+        <div class="flex-1 flex items-center gap-2 border border-gray-200 rounded-lg px-3 py-2.5 focus-within:border-[#5a7c50] transition">
+          <svg class="w-4 h-4 text-gray-400 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5"
+                  d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z"/>
+          </svg>
+          <input id="date-from" type="date" onchange="loadDate()"
+                 class="flex-1 text-sm focus:outline-none bg-transparent text-gray-600 min-w-0">
+        </div>
+        <span class="text-gray-300 shrink-0">—</span>
+        <div class="flex-1 flex items-center gap-2 border border-gray-200 rounded-lg px-3 py-2.5 focus-within:border-[#5a7c50] transition">
+          <svg class="w-4 h-4 text-gray-400 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5"
+                  d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z"/>
+          </svg>
+          <input id="date-to" type="date" onchange="loadDate()"
+                 class="flex-1 text-sm focus:outline-none bg-transparent text-gray-600 min-w-0">
+        </div>
+      </div>
+
     </div>
   </div>
 
