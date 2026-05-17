@@ -56,31 +56,46 @@ body { overflow: hidden; }
 
   {# 日期模式 #}
   <div id="mode-date" class="hidden flex-1 overflow-hidden">
-    <div class="flex h-full">
+    <div class="flex flex-col h-full items-center justify-center gap-5 px-6 py-6">
 
-      {# 左側 Preset 欄 #}
-      <div class="flex flex-col gap-1 py-6 px-3 w-36 shrink-0 border-r border-gray-100 justify-center">
-        <p class="text-[11px] text-gray-400 tracking-[0.15em] px-3 mb-2">快速選擇</p>
+      {# 橫排 4 顆按鈕（Preline Ghost Button style） #}
+      <div class="flex items-center gap-2">
         <button onclick="applyPreset(this,1,'month')"
-                class="preset-btn text-left px-3 py-2 rounded-lg text-[15px] text-gray-600 hover:bg-gray-100 transition w-full">
-          最近一個月
+                class="preset-btn py-2 px-4 inline-flex items-center text-[21px] font-medium rounded-lg
+                       border border-transparent text-[#5a7c50]
+                       hover:bg-[#eef3eb] hover:text-[#4a6741]
+                       focus:outline-none focus:bg-[#eef3eb] focus:text-[#4a6741]
+                       transition disabled:opacity-50 disabled:pointer-events-none">
+          最近一月
         </button>
         <button onclick="applyPreset(this,6,'month')"
-                class="preset-btn text-left px-3 py-2 rounded-lg text-[15px] text-gray-600 hover:bg-gray-100 transition w-full">
+                class="preset-btn py-2 px-4 inline-flex items-center text-[21px] font-medium rounded-lg
+                       border border-transparent text-[#5a7c50]
+                       hover:bg-[#eef3eb] hover:text-[#4a6741]
+                       focus:outline-none focus:bg-[#eef3eb] focus:text-[#4a6741]
+                       transition disabled:opacity-50 disabled:pointer-events-none">
           最近半年
         </button>
         <button onclick="applyPreset(this,1,'year')"
-                class="preset-btn text-left px-3 py-2 rounded-lg text-[15px] text-gray-600 hover:bg-gray-100 transition w-full">
+                class="preset-btn py-2 px-4 inline-flex items-center text-[21px] font-medium rounded-lg
+                       border border-transparent text-[#5a7c50]
+                       hover:bg-[#eef3eb] hover:text-[#4a6741]
+                       focus:outline-none focus:bg-[#eef3eb] focus:text-[#4a6741]
+                       transition disabled:opacity-50 disabled:pointer-events-none">
           最近一年
         </button>
         <button onclick="applyPreset(this,3,'year')"
-                class="preset-btn text-left px-3 py-2 rounded-lg text-[15px] text-gray-600 hover:bg-gray-100 transition w-full">
+                class="preset-btn py-2 px-4 inline-flex items-center text-[21px] font-medium rounded-lg
+                       border border-transparent text-[#5a7c50]
+                       hover:bg-[#eef3eb] hover:text-[#4a6741]
+                       focus:outline-none focus:bg-[#eef3eb] focus:text-[#4a6741]
+                       transition disabled:opacity-50 disabled:pointer-events-none">
           最近三年
         </button>
       </div>
 
-      {# 右側日曆區（Flatpickr inline） #}
-      <div class="flex-1 flex items-center justify-center overflow-hidden py-4">
+      {# 日曆（Preline datepicker card 外框風格） #}
+      <div class="bg-white border border-gray-200 shadow-lg rounded-xl overflow-hidden">
         <div id="fp-calendar"></div>
       </div>
 
@@ -307,11 +322,11 @@ body { overflow: hidden; }
 
   function applyPreset(el, n, unit) {
     document.querySelectorAll('.preset-btn').forEach(b => {
-      b.classList.remove('bg-[#5a7c50]', 'text-white');
-      b.classList.add('text-gray-600');
+      b.classList.remove('bg-[#5a7c50]', 'text-white', 'hover:bg-[#4a6741]');
+      b.classList.add('text-[#5a7c50]', 'hover:bg-[#eef3eb]', 'hover:text-[#4a6741]');
     });
-    el.classList.remove('text-gray-600');
-    el.classList.add('bg-[#5a7c50]', 'text-white');
+    el.classList.remove('text-[#5a7c50]', 'hover:bg-[#eef3eb]', 'hover:text-[#4a6741]');
+    el.classList.add('bg-[#5a7c50]', 'text-white', 'hover:bg-[#4a6741]');
 
     const to   = new Date();
     const from = new Date();
