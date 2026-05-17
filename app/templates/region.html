@@ -3,8 +3,8 @@
 {% block content %}
 
 <nav class="text-sm text-gray-400 mb-6">
-  <a href="/" class="hover:text-green-700">首頁</a> ›
-  <a href="/" class="hover:text-green-700">地區查詢</a> ›
+  <a href="/" class="hover:text-[#4a6741]">首頁</a> ›
+  <a href="/" class="hover:text-[#4a6741]">地區查詢</a> ›
   {{ county }}
 </nav>
 
@@ -15,7 +15,7 @@
     {% for row in regions %}
     <a href="/region/{{ county }}/{{ row.region }}"
        class="bg-white border border-gray-200 rounded-lg py-4 px-5 font-medium
-              hover:border-green-500 hover:bg-green-50 hover:text-green-800 transition">
+              hover:border-[#5a7c50] hover:bg-[#eef3eb] hover:text-[#4a6741] transition">
       {{ row.region }}
     </a>
     {% endfor %}
