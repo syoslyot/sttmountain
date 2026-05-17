@@ -32,7 +32,7 @@ COUNTY_GRID = [
 
 COUNTY_MAP = {c[0]: c[1] for c in COUNTY_GRID}
 
-_LEADER_SUB = "(SELECT m.name FROM members m WHERE m.expedition_id = e.id AND m.role = '領隊' LIMIT 1) as leader_name"
+_LEADER_SUB = "e.leader as leader_name"
 
 
 def _enrich(rows) -> list[dict]:
