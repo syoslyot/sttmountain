@@ -5,27 +5,7 @@
 {% block head %}
 <script src="https://cdn.jsdelivr.net/npm/d3@7/dist/d3.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/topojson-client@3/dist/topojson-client.js"></script>
-<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/flatpickr/dist/flatpickr.min.css">
-<script src="https://cdn.jsdelivr.net/npm/flatpickr"></script>
-<style>
-body { overflow: hidden; }
-.flatpickr-day.selected,.flatpickr-day.startRange,.flatpickr-day.endRange,
-.flatpickr-day.selected:hover,.flatpickr-day.startRange:hover,.flatpickr-day.endRange:hover {
-  background: #5a7c50; border-color: #5a7c50; color: #fff;
-}
-.flatpickr-day.inRange {
-  background: #c8dcc0 !important;
-  box-shadow: -5px 0 0 #c8dcc0, 5px 0 0 #c8dcc0 !important;
-  border-color: transparent !important;
-}
-.flatpickr-day:hover:not(.selected):not(.inRange):not(.startRange):not(.endRange) {
-  background: #eef3eb; border-color: #eef3eb;
-}
-.flatpickr-months .flatpickr-prev-month:hover svg,
-.flatpickr-months .flatpickr-next-month:hover svg { fill: #5a7c50; }
-.flatpickr-current-month .numInputWrapper span.arrowUp:after { border-bottom-color: #5a7c50; }
-.flatpickr-current-month .numInputWrapper span.arrowDown:after { border-top-color: #5a7c50; }
-</style>
+<style>body { overflow: hidden; }</style>
 {% endblock %}
 
 {% block content %}
@@ -58,45 +38,63 @@ body { overflow: hidden; }
   <div id="mode-date" class="hidden flex-1 overflow-hidden">
     <div class="flex flex-col h-full items-center justify-center gap-5 px-6 py-6">
 
-      {# 橫排 4 顆按鈕（Preline Ghost Button style） #}
+      {# 4 顆快速選擇按鈕（Preline Outline style） #}
       <div class="flex items-center gap-2">
         <button onclick="applyPreset(this,1,'month')"
-                class="preset-btn py-2 px-4 inline-flex items-center text-[21px] font-medium rounded-lg
-                       border border-transparent text-[#5a7c50]
-                       hover:bg-[#eef3eb] hover:text-[#4a6741]
-                       focus:outline-none focus:bg-[#eef3eb] focus:text-[#4a6741]
+                class="preset-btn py-2 px-4 inline-flex items-center text-sm font-medium rounded-lg
+                       border border-gray-200 text-gray-500
+                       hover:border-[#4a6741] hover:text-[#4a6741]
+                       focus:outline-none focus:border-[#4a6741] focus:text-[#4a6741]
                        transition disabled:opacity-50 disabled:pointer-events-none">
           最近一月
         </button>
         <button onclick="applyPreset(this,6,'month')"
-                class="preset-btn py-2 px-4 inline-flex items-center text-[21px] font-medium rounded-lg
-                       border border-transparent text-[#5a7c50]
-                       hover:bg-[#eef3eb] hover:text-[#4a6741]
-                       focus:outline-none focus:bg-[#eef3eb] focus:text-[#4a6741]
+                class="preset-btn py-2 px-4 inline-flex items-center text-sm font-medium rounded-lg
+                       border border-gray-200 text-gray-500
+                       hover:border-[#4a6741] hover:text-[#4a6741]
+                       focus:outline-none focus:border-[#4a6741] focus:text-[#4a6741]
                        transition disabled:opacity-50 disabled:pointer-events-none">
           最近半年
         </button>
         <button onclick="applyPreset(this,1,'year')"
-                class="preset-btn py-2 px-4 inline-flex items-center text-[21px] font-medium rounded-lg
-                       border border-transparent text-[#5a7c50]
-                       hover:bg-[#eef3eb] hover:text-[#4a6741]
-                       focus:outline-none focus:bg-[#eef3eb] focus:text-[#4a6741]
+                class="preset-btn py-2 px-4 inline-flex items-center text-sm font-medium rounded-lg
+                       border border-gray-200 text-gray-500
+                       hover:border-[#4a6741] hover:text-[#4a6741]
+                       focus:outline-none focus:border-[#4a6741] focus:text-[#4a6741]
                        transition disabled:opacity-50 disabled:pointer-events-none">
           最近一年
         </button>
         <button onclick="applyPreset(this,3,'year')"
-                class="preset-btn py-2 px-4 inline-flex items-center text-[21px] font-medium rounded-lg
-                       border border-transparent text-[#5a7c50]
-                       hover:bg-[#eef3eb] hover:text-[#4a6741]
-                       focus:outline-none focus:bg-[#eef3eb] focus:text-[#4a6741]
+                class="preset-btn py-2 px-4 inline-flex items-center text-sm font-medium rounded-lg
+                       border border-gray-200 text-gray-500
+                       hover:border-[#4a6741] hover:text-[#4a6741]
+                       focus:outline-none focus:border-[#4a6741] focus:text-[#4a6741]
                        transition disabled:opacity-50 disabled:pointer-events-none">
           最近三年
         </button>
       </div>
 
-      {# 日曆（Preline datepicker card 外框風格） #}
+      {# 雙月日曆卡片（Preline Range picker with summary） #}
       <div class="bg-white border border-gray-200 shadow-lg rounded-xl overflow-hidden">
-        <div id="fp-calendar"></div>
+        <div class="flex">
+          <div id="cal-month-left" class="p-3 space-y-0.5"></div>
+          <div id="cal-month-right" class="p-3 space-y-0.5"></div>
+        </div>
+        <div class="flex items-center py-3 px-4 justify-end border-t border-gray-100 gap-x-2">
+          <span id="cal-summary" class="me-3 text-xs text-gray-500"></span>
+          <button onclick="cancelDate()"
+                  class="py-2 px-3 inline-flex items-center text-xs font-medium rounded-lg
+                         bg-white border border-gray-200 text-gray-700
+                         hover:bg-gray-50 disabled:opacity-50 disabled:pointer-events-none">
+            取消
+          </button>
+          <button onclick="applyDate()"
+                  class="py-2 px-3 inline-flex items-center text-xs font-medium rounded-lg
+                         bg-[#5a7c50] text-white hover:bg-[#4a6741]
+                         disabled:opacity-50 disabled:pointer-events-none">
+            套用
+          </button>
+        </div>
       </div>
 
     </div>
@@ -274,35 +272,153 @@ body { overflow: hidden; }
     pageLoading = false;
   }
 
-  let fp = null;
+  // ── 自製雙月日曆 ─────────────────────────────────────────────────────────
+  const MONTH_NAMES = ['一月','二月','三月','四月','五月','六月',
+                       '七月','八月','九月','十月','十一月','十二月'];
+  const DAY_NAMES   = ['日','一','二','三','四','五','六'];
+  const fmtDate = d => {
+    const m = String(d.getMonth() + 1).padStart(2, '0');
+    const dy = String(d.getDate()).padStart(2, '0');
+    return `${d.getFullYear()}-${m}-${dy}`;
+  };
 
-  document.addEventListener('DOMContentLoaded', () => {
-    const fmt = d => d.toISOString().slice(0, 10);
+  let calStart = null, calEnd = null;
+  let calBaseYear, calBaseMonth;
 
-    fp = flatpickr('#fp-calendar', {
-      mode: 'range',
-      inline: true,
-      showMonths: 1,
-      defaultDate: DATE_MIN && DATE_MAX ? [DATE_MIN, DATE_MAX] : undefined,
-      onChange(selectedDates) {
-        if (selectedDates.length < 2) return;
-        document.getElementById('date-from').value = fmt(selectedDates[0]);
-        document.getElementById('date-to').value   = fmt(selectedDates[1]);
-        loadDate();
-      },
-    });
-
+  function initCalendar() {
+    const now = new Date();
+    calBaseYear  = now.getFullYear();
+    calBaseMonth = now.getMonth();
     if (DATE_MIN && DATE_MAX) {
-      document.getElementById('date-from').value = DATE_MIN;
-      document.getElementById('date-to').value   = DATE_MAX;
-      loadDate();
+      calStart = new Date(DATE_MIN);
+      calEnd   = new Date(DATE_MAX);
+      calBaseYear  = calEnd.getFullYear();
+      calBaseMonth = calEnd.getMonth();
+    }
+    renderCalendar();
+    if (DATE_MIN && DATE_MAX) loadDate();
+  }
+
+  function renderCalendar() {
+    let ly = calBaseYear, lm = calBaseMonth - 1;
+    if (lm < 0) { lm = 11; ly--; }
+    renderMonth('cal-month-left',  ly, lm, true);
+    renderMonth('cal-month-right', calBaseYear, calBaseMonth, false);
+    const s = document.getElementById('cal-summary');
+    s.textContent = calStart && calEnd
+      ? `${fmtDate(calStart)} ～ ${fmtDate(calEnd)}`
+      : calStart ? fmtDate(calStart) : '';
+  }
+
+  function renderMonth(id, year, month, isLeft) {
+    const prevBtn = isLeft
+      ? `<button onclick="calNav(-1)" class="size-8 flex justify-center items-center text-gray-700 hover:bg-gray-100 rounded-full text-lg leading-none">&#8249;</button>`
+      : `<button class="opacity-0 pointer-events-none size-8 flex justify-center items-center rounded-full"></button>`;
+    const nextBtn = !isLeft
+      ? `<button onclick="calNav(1)" class="size-8 flex justify-center items-center text-gray-700 hover:bg-gray-100 rounded-full text-lg leading-none">&#8250;</button>`
+      : `<button class="opacity-0 pointer-events-none size-8 flex justify-center items-center rounded-full"></button>`;
+
+    const firstDay    = new Date(year, month, 1).getDay();
+    const daysInMonth = new Date(year, month + 1, 0).getDate();
+    const daysInPrev  = new Date(year, month, 0).getDate();
+
+    let cells = [];
+    for (let i = firstDay - 1; i >= 0; i--)
+      cells.push({ d: daysInPrev - i, m: (month + 11) % 12, y: month === 0 ? year - 1 : year, off: true });
+    for (let d = 1; d <= daysInMonth; d++)
+      cells.push({ d, m: month, y: year, off: false });
+    const rem = 7 - (cells.length % 7);
+    if (rem < 7)
+      for (let d = 1; d <= rem; d++)
+        cells.push({ d, m: (month + 1) % 12, y: month === 11 ? year + 1 : year, off: true });
+
+    let weeksHtml = '';
+    for (let w = 0; w < cells.length / 7; w++) {
+      const week = cells.slice(w * 7, w * 7 + 7);
+      weeksHtml += `<div class="flex">`;
+      for (let ci = 0; ci < 7; ci++) weeksHtml += renderDay(week[ci], ci);
+      weeksHtml += `</div>`;
     }
 
+    document.getElementById(id).innerHTML = `
+      <div class="grid grid-cols-5 items-center gap-x-3 mx-1.5 pb-3">
+        <div class="col-span-1">${prevBtn}</div>
+        <div class="col-span-3 flex justify-center">
+          <span class="font-medium text-sm text-gray-700">${MONTH_NAMES[month]} ${year}</span>
+        </div>
+        <div class="col-span-1 flex justify-end">${nextBtn}</div>
+      </div>
+      <div class="flex pb-1.5">
+        ${DAY_NAMES.map(n => `<span class="m-px w-10 block text-center text-xs text-gray-400">${n}</span>`).join('')}
+      </div>
+      ${weeksHtml}`;
+  }
+
+  function renderDay(cell, col) {
+    const dateObj = new Date(cell.y, cell.m, cell.d);
+    const ds      = fmtDate(dateObj);
+    const isStart = calStart && fmtDate(calStart) === ds;
+    const isEnd   = calEnd   && fmtDate(calEnd)   === ds;
+    const inRange = calStart && calEnd && dateObj > calStart && dateObj < calEnd;
+
+    let wrap = '', btn = 'm-px size-10 flex justify-center items-center border-[1.5px] border-transparent text-sm rounded-full';
+    if (cell.off) {
+      btn += ' text-gray-300 pointer-events-none';
+    } else if (isStart && isEnd) {
+      btn += ' bg-[#5a7c50] text-white font-medium';
+    } else if (isStart) {
+      wrap = 'bg-[#eef3eb] rounded-s-full';
+      btn += ' bg-[#5a7c50] text-white font-medium';
+    } else if (isEnd) {
+      wrap = 'bg-[#eef3eb] rounded-e-full';
+      btn += ' bg-[#5a7c50] text-white font-medium';
+    } else if (inRange) {
+      wrap = 'bg-[#eef3eb]' + (col === 0 ? ' rounded-s-full' : '') + (col === 6 ? ' rounded-e-full' : '');
+      btn += ' text-gray-700';
+    } else {
+      btn += ' text-gray-700 hover:border-[#4a6741] hover:text-[#4a6741]';
+    }
+    const click = cell.off ? '' : `onclick="calClick('${ds}')"`;
+    return `<div class="${wrap}"><button type="button" ${click} class="${btn}">${cell.d}</button></div>`;
+  }
+
+  function calClick(ds) {
+    const d = new Date(ds);
+    if (!calStart || (calStart && calEnd)) { calStart = d; calEnd = null; }
+    else if (d < calStart) { calEnd = calStart; calStart = d; }
+    else { calEnd = d; }
+    renderCalendar();
+  }
+
+  function calNav(dir) {
+    calBaseMonth += dir;
+    if (calBaseMonth > 11) { calBaseMonth = 0; calBaseYear++; }
+    if (calBaseMonth <  0) { calBaseMonth = 11; calBaseYear--; }
+    renderCalendar();
+  }
+
+  function applyDate() {
+    if (!calStart) return;
+    document.getElementById('date-from').value = fmtDate(calStart);
+    document.getElementById('date-to').value   = calEnd ? fmtDate(calEnd) : fmtDate(calStart);
+    loadDate();
+  }
+
+  function cancelDate() {
+    calStart = null; calEnd = null;
+    document.querySelectorAll('.preset-btn').forEach(b => {
+      b.classList.remove('bg-[#5a7c50]', 'text-white', 'border-[#5a7c50]', 'hover:bg-[#4a6741]', 'hover:text-white');
+      b.classList.add('border-gray-200', 'text-gray-500');
+    });
+    renderCalendar();
+  }
+
+  document.addEventListener('DOMContentLoaded', () => {
+    initCalendar();
     document.getElementById('results').addEventListener('scroll', () => {
       const r = document.getElementById('results');
       if (r.scrollTop + r.clientHeight >= r.scrollHeight - 200) loadMore();
     });
-
     initMap();
   });
 
@@ -322,17 +438,20 @@ body { overflow: hidden; }
 
   function applyPreset(el, n, unit) {
     document.querySelectorAll('.preset-btn').forEach(b => {
-      b.classList.remove('bg-[#5a7c50]', 'text-white', 'hover:bg-[#4a6741]');
-      b.classList.add('text-[#5a7c50]', 'hover:bg-[#eef3eb]', 'hover:text-[#4a6741]');
+      b.classList.remove('bg-[#5a7c50]', 'text-white', 'border-[#5a7c50]', 'hover:bg-[#4a6741]', 'hover:text-white');
+      b.classList.add('border-gray-200', 'text-gray-500');
     });
-    el.classList.remove('text-[#5a7c50]', 'hover:bg-[#eef3eb]', 'hover:text-[#4a6741]');
-    el.classList.add('bg-[#5a7c50]', 'text-white', 'hover:bg-[#4a6741]');
+    el.classList.remove('border-gray-200', 'text-gray-500');
+    el.classList.add('bg-[#5a7c50]', 'text-white', 'border-[#5a7c50]', 'hover:bg-[#4a6741]', 'hover:text-white');
 
-    const to   = new Date();
-    const from = new Date();
-    if (unit === 'month') from.setMonth(from.getMonth() - n);
-    else                   from.setFullYear(from.getFullYear() - n);
-    if (fp) fp.setDate([from, to], true);
+    calEnd   = new Date();
+    calStart = new Date();
+    if (unit === 'month') calStart.setMonth(calStart.getMonth() - n);
+    else                   calStart.setFullYear(calStart.getFullYear() - n);
+    calBaseYear  = calEnd.getFullYear();
+    calBaseMonth = calEnd.getMonth();
+    renderCalendar();
+    applyDate();
   }
 
   function loadSearch() {
