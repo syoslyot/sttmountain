@@ -56,10 +56,18 @@ def _enrich(rows) -> list[dict]:
 
 @router.get("/", response_class=HTMLResponse)
 def home(request: Request, mode: str = "map"):
+    with get_conn() as conn:
+        row = conn.execute(
+            "SELECT MIN(date_start), MAX(COALESCE(date_end, date_start)) FROM expeditions"
+        ).fetchone()
+    date_min = row[0] or ""
+    date_max = row[1] or ""
     return templates.TemplateResponse("index.html", {
         "request": request,
         "county_grid": COUNTY_GRID,
         "initial_mode": mode,
+        "date_min": date_min,
+        "date_max": date_max,
     })
 
 
