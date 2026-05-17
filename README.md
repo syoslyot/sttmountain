@@ -29,11 +29,12 @@ NCKU 山協出隊資料展示平台。幹部照舊把資料上傳至 Google Driv
   {出隊名稱}/
     出隊計畫書.xlsx          ← 直企格式（必填）
     地圖資料夾/              ← 也可命名為「地圖」「map」「maps」
-      軌跡.gpx 或 .kml      ← GPX 軌跡（選填）
-      地圖.pdf              ← 地圖 PDF（選填）
+      軌跡.gpx 或 .kml      ← GPX 軌跡（選填，可多份）
+      地圖.pdf              ← 地圖 PDF（選填，可多份）
     紀錄資料夾/              ← 也可命名為「紀錄」「record」「records」
       成員A紀錄.txt         ← 隊員紀錄文章，可多份（選填）
-      成員B紀錄.txt
+      成員B紀錄.docx        ← Word 文件亦可
+      成員C紀錄（Google 文件）← Google 文件亦可（自動匯出為 txt）
 ```
 
 **注意：**
@@ -50,14 +51,13 @@ NCKU 山協出隊資料展示平台。幹部照舊把資料上傳至 Google Driv
 
 | 類型 | 下載至 |
 |---|---|
-| xlsx | `data/raw/xlsx/{出隊名}.xlsx` |
-| GPX / KML | `app/static/gpx/{出隊名}.gpx` |
-| PDF | `app/static/maps/{出隊名}.pdf` |
-| txt / md | `data/raw/txt/{出隊名}/{filename}` |
+| xlsx | `data/raw/xlsx/{出隊名}_{drive_filename}.xlsx` |
+| GPX / KML | `app/static/gpx/{出隊名}_{drive_filename}`（支援多檔） |
+| PDF | `app/static/maps/{出隊名}_{drive_filename}`（支援多檔） |
+| txt / md / docx | `data/raw/txt/{出隊名}_{filename}`（扁平，無子資料夾） |
+| Google 文件 | 匯出為 `data/raw/txt/{出隊名}_{name}.txt` |
 
 **冪等保護：** 目標檔案已存在時直接跳過，不重複下載。
-
-`data/raw/xlsx/` 以外出現的 xlsx = 尚未建檔，維護人員可一眼識別。
 
 ---
 
@@ -80,13 +80,13 @@ python3 scripts/normalize.py data/raw/xlsx/foo.xlsx  # 指定檔案
   ↓
 解析 直企P2(列印) sheet
   → 留守資料（M/N 欄）、Garmin 追蹤連結、注意事項 → 合為 description
-  → 人員名單（角色、系級、姓名、資歷）
+  → 領隊姓名 → expeditions.leader
   ↓
 查詢 DB：是否已存在同名＋同日期的出隊？
   ├─ 已存在 → 補掃靜態檔案後結束
-  └─ 不存在 → INSERT expeditions + members + expedition_counties
+  └─ 不存在 → INSERT expeditions + expedition_counties
               ↓
-              rename xlsx：{出隊名}.xlsx → {id}.xlsx
+              rename xlsx：{出隊名}_{drive_filename}.xlsx → {id}_{drive_filename}.xlsx
               ↓
               scan_static_files
               ↓
@@ -97,16 +97,18 @@ python3 scripts/normalize.py data/raw/xlsx/foo.xlsx  # 指定檔案
 
 **scan_static_files 行為：**
 
-| 資源 | 來源 | 目的地 | DB 寫入 |
-|---|---|---|---|
-| GPX | `app/static/gpx/{出隊名}.gpx` | `app/static/gpx/{id}.gpx` | `gpx_files` |
-| PDF | `app/static/maps/{出隊名}.pdf` | `app/static/maps/{id}.pdf` | `map_files` |
-| txt 資料夾 | `data/raw/txt/{出隊名}/` | `data/raw/txt/{id}/` | `records`（逐檔 INSERT） |
+以 P1 解析出的出隊名稱（`name`）為前綴，glob 掃描各目錄，將 `{出隊名}_{original}` 改名為 `{id}_{original}` 並寫入 DB：
 
-所有靜態資源在 DB 中以 `{id}.ext` 形式儲存，與原始中文名稱完全解耦。
+| 資源 | 來源（glob） | 目的地 | DB 寫入 |
+|---|---|---|---|
+| GPX / KML | `app/static/gpx/{出隊名}_*` | `app/static/gpx/{id}_{original}` | `gpx_files` |
+| PDF | `app/static/maps/{出隊名}_*` | `app/static/maps/{id}_{original}` | `map_files` |
+| txt / md / docx | `data/raw/txt/{出隊名}_*`（扁平） | `data/raw/txt/{id}_{original}` | `records`（逐檔 INSERT） |
+
+每種資源均支援多檔；`.docx` 透過 `python-docx` 提取純文字後存入 `records.content`。
 
 **重複執行（idempotency）：**
-- xlsx / GPX / PDF 已改名 → 略過 rename
+- 目標路徑已存在 → 略過 rename
 - `INSERT OR IGNORE` 保護不重複寫 DB
 - records 以 `(expedition_id, filename)` 查 DB，已存在則跳過
 
@@ -172,13 +174,12 @@ python3 scripts/normalize.py data/raw/xlsx/foo.xlsx  # 指定檔案
 #### 右半：出隊資訊（由上至下）
 
 1. **截圖預覽**（P1 + P2 合併圖）— 有才顯示
-2. **人員名單**（`<details>`，預設**收合**）— 有隊員才顯示；欄位：姓名、角色、系級、資歷
-3. **紀錄文章**（每份 txt 各一個 `<details>`，預設**展開**）— 有才顯示；`<pre>` 保留原始格式
+2. **紀錄文章**（每份 txt/docx 各一個 `<details>`，預設**展開**）— 有才顯示；`<pre>` 保留原始格式
 
 #### Navbar 下載按鈕
 
-- 有 GPX → 顯示 GPX 下載按鈕
-- 有 PDF → 顯示 PDF 下載按鈕
+- 有 GPX → 顯示 GPX 下載按鈕，按鈕文字為 DB 中的實際檔名（如 `210_水山霞山_薰慈.gpx`）
+- 有 PDF → 顯示 PDF 下載按鈕，按鈕文字為 DB 中的實際檔名
 - 兩者皆無 → 不顯示任何下載元素
 
 ---
@@ -187,10 +188,9 @@ python3 scripts/normalize.py data/raw/xlsx/foo.xlsx  # 指定檔案
 
 ```
 expeditions         id, name, date_start, date_end, county, region, region_exit,
-                    description, preview_image, created_at
-members             id, expedition_id, name, role, department, experience
-gpx_files           id, expedition_id, file_path       （如 "210.gpx"）
-map_files           id, expedition_id, file_path       （如 "210.pdf"）
+                    leader, description, preview_image, created_at
+gpx_files           id, expedition_id, file_path       （如 "210_水山霞山_薰慈.gpx"）
+map_files           id, expedition_id, file_path       （如 "209_茶茶牙頓出西都驕溪.pdf"）
 records             id, expedition_id, filename, content
 expedition_counties expedition_id, county              （入山＋出山各一筆，UNIQUE）
 ```
@@ -221,6 +221,13 @@ Watchtower（部署伺服器）自動偵測新 image → 重啟容器
 **環境變數（GitHub Actions Secrets）：**
 - `GDRIVE_CREDENTIALS_JSON` — Service Account JSON
 - `GDRIVE_ROOT_FOLDER_ID` — 「所有出隊資料夾」的 Drive folder ID
+
+---
+
+## 待辦事項
+
+- [ ] 出隊詳細頁：多 GPX 檔選擇（目前全部同時載入，需加選擇 UI）
+- [ ] 出隊詳細頁：多筆紀錄文章選擇（目前全部展開，需加選擇 UI）
 
 ---
 

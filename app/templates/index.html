@@ -5,25 +5,26 @@
 {% block head %}
 <script src="https://cdn.jsdelivr.net/npm/d3@7/dist/d3.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/topojson-client@3/dist/topojson-client.js"></script>
+<style>body { overflow: hidden; }</style>
 {% endblock %}
 
 {% block content %}
 
 {# ── 左半：模式切換 ── #}
-<div class="w-1/2 flex flex-col overflow-hidden border-r border-gray-100" style="height: calc(100vh - 65px);">
+<div class="w-1/2 flex flex-col overflow-hidden border-r border-gray-100">
 
   {# Tab 列 #}
   <div class="flex shrink-0 border-b border-gray-100">
     <button id="tab-map" onclick="setMode('map')"
-      class="tab-btn flex-1 py-3.5 flex items-center justify-center text-[18px] font-medium transition border-b-2 border-transparent">
+      class="tab-btn flex-1 py-3.5 flex items-center justify-center text-[21px] font-medium transition border-b-2 border-transparent">
       地區
     </button>
     <button id="tab-date" onclick="setMode('date')"
-      class="tab-btn flex-1 py-3.5 flex items-center justify-center text-[18px] font-medium transition border-b-2 border-transparent">
+      class="tab-btn flex-1 py-3.5 flex items-center justify-center text-[21px] font-medium transition border-b-2 border-transparent">
       日期
     </button>
     <button id="tab-search" onclick="setMode('search')"
-      class="tab-btn flex-1 py-3.5 flex items-center justify-center text-[18px] font-medium transition border-b-2 border-transparent">
+      class="tab-btn flex-1 py-3.5 flex items-center justify-center text-[21px] font-medium transition border-b-2 border-transparent">
       關鍵字
     </button>
   </div>
@@ -34,34 +35,71 @@
   </div>
 
   {# 日期模式 #}
-  <div id="mode-date" class="hidden flex-1 overflow-y-auto p-5">
-    <div class="flex flex-col gap-3">
-      <div class="grid grid-cols-4 gap-1.5">
-        <button onclick="loadPreset(1,'month')"
-                class="border border-gray-200 rounded-lg py-1.5 text-xs text-gray-600 hover:bg-[#eef3eb] hover:border-[#5a7c50] hover:text-[#4a6741] transition">
-          最近一個月
+  <div id="mode-date" class="hidden flex-1 overflow-hidden">
+    <div class="flex flex-col h-full items-center justify-center gap-5 px-6 py-6">
+
+      {# 4 顆快速選擇按鈕（Preline Outline style） #}
+      <div class="flex items-center gap-2">
+        <button onclick="applyPreset(this,1,'month')"
+                class="preset-btn py-2 px-4 inline-flex items-center text-sm font-medium rounded-lg
+                       border border-gray-200 text-gray-500
+                       hover:border-[#4a6741] hover:text-[#4a6741]
+                       focus:outline-none focus:border-[#4a6741] focus:text-[#4a6741]
+                       transition disabled:opacity-50 disabled:pointer-events-none">
+          最近一月
         </button>
-        <button onclick="loadPreset(6,'month')"
-                class="border border-gray-200 rounded-lg py-1.5 text-xs text-gray-600 hover:bg-[#eef3eb] hover:border-[#5a7c50] hover:text-[#4a6741] transition">
+        <button onclick="applyPreset(this,6,'month')"
+                class="preset-btn py-2 px-4 inline-flex items-center text-sm font-medium rounded-lg
+                       border border-gray-200 text-gray-500
+                       hover:border-[#4a6741] hover:text-[#4a6741]
+                       focus:outline-none focus:border-[#4a6741] focus:text-[#4a6741]
+                       transition disabled:opacity-50 disabled:pointer-events-none">
           最近半年
         </button>
-        <button onclick="loadPreset(1,'year')"
-                class="border border-gray-200 rounded-lg py-1.5 text-xs text-gray-600 hover:bg-[#eef3eb] hover:border-[#5a7c50] hover:text-[#4a6741] transition">
+        <button onclick="applyPreset(this,1,'year')"
+                class="preset-btn py-2 px-4 inline-flex items-center text-sm font-medium rounded-lg
+                       border border-gray-200 text-gray-500
+                       hover:border-[#4a6741] hover:text-[#4a6741]
+                       focus:outline-none focus:border-[#4a6741] focus:text-[#4a6741]
+                       transition disabled:opacity-50 disabled:pointer-events-none">
           最近一年
         </button>
-        <button onclick="loadPreset(3,'year')"
-                class="border border-gray-200 rounded-lg py-1.5 text-xs text-gray-600 hover:bg-[#eef3eb] hover:border-[#5a7c50] hover:text-[#4a6741] transition">
+        <button onclick="applyPreset(this,3,'year')"
+                class="preset-btn py-2 px-4 inline-flex items-center text-sm font-medium rounded-lg
+                       border border-gray-200 text-gray-500
+                       hover:border-[#4a6741] hover:text-[#4a6741]
+                       focus:outline-none focus:border-[#4a6741] focus:text-[#4a6741]
+                       transition disabled:opacity-50 disabled:pointer-events-none">
           最近三年
         </button>
       </div>
-      <div class="flex items-center gap-2">
-        <input id="date-from" type="date" onchange="loadDate()"
-               class="flex-1 border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-[#5a7c50]">
-        <span class="text-gray-400 text-sm shrink-0">～</span>
-        <input id="date-to" type="date" onchange="loadDate()"
-               class="flex-1 border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-[#5a7c50]">
+
+      {# 雙月日曆卡片（Preline Range picker with summary） #}
+      <div class="bg-white border border-gray-200 shadow-lg rounded-xl overflow-hidden">
+        <div class="flex">
+          <div id="cal-month-left" class="p-3 space-y-0.5"></div>
+          <div id="cal-month-right" class="p-3 space-y-0.5"></div>
+        </div>
+        <div class="flex items-center py-3 px-4 justify-end border-t border-gray-100 gap-x-2">
+          <span id="cal-summary" class="me-3 text-xs text-gray-500"></span>
+          <button onclick="cancelDate()"
+                  class="py-2 px-3 inline-flex items-center text-xs font-medium rounded-lg
+                         bg-white border border-gray-200 text-gray-700
+                         hover:bg-gray-50 disabled:opacity-50 disabled:pointer-events-none">
+            取消
+          </button>
+          <button onclick="applyDate()"
+                  class="py-2 px-3 inline-flex items-center text-xs font-medium rounded-lg
+                         bg-[#5a7c50] text-white hover:bg-[#4a6741]
+                         disabled:opacity-50 disabled:pointer-events-none">
+            套用
+          </button>
+        </div>
       </div>
+
     </div>
+    <input id="date-from" type="hidden">
+    <input id="date-to" type="hidden">
   </div>
 
   {# 搜尋模式 #}
@@ -77,11 +115,13 @@
 </div>
 
 {# ── 右半：結果 ── #}
-<div id="results" class="w-1/2 overflow-y-auto px-6 pt-8 pb-6 space-y-3" style="height: calc(100vh - 65px);"></div>
+<div id="results" class="w-1/2 overflow-y-auto px-6 pt-[60px] pb-6 space-y-6"></div>
 
 <script>
   const INITIAL_MODE = "{{ initial_mode }}";
   const PAGE = 20;
+  const DATE_MIN = "{{ date_min }}";
+  const DATE_MAX = "{{ date_max }}";
 
   let pageBaseUrl = '';
   let pageOffset  = 0;
@@ -122,7 +162,7 @@
         g.selectAll("path")
           .data(counties.features).join("path")
           .attr("d", path)
-          .attr("fill", d => ISLANDS.has(d.properties.COUNTYNAME) ? "#f3f4f6" : "#eef3eb")
+          .attr("fill", d => ISLANDS.has(d.properties.COUNTYNAME) ? "#f3f4f6" : "#6b8a5e")
           .attr("stroke", d => ISLANDS.has(d.properties.COUNTYNAME) ? "#e5e7eb" : "#d1d5db")
           .attr("stroke-width", 0.5)
           .style("pointer-events", "none");
@@ -153,14 +193,14 @@
             if (hoveredFeature) {
               const prev = COUNTY_NORMALIZE[hoveredFeature.properties.COUNTYNAME];
               if (prev !== selectedCounty)
-                g.selectAll("path").filter(p => p === hoveredFeature).attr("fill", "#eef3eb");
+                g.selectAll("path").filter(p => p === hoveredFeature).attr("fill", "#6b8a5e");
             }
             hoveredFeature = found;
             if (found) {
               svg.style("cursor", "pointer");
               const display = COUNTY_NORMALIZE[found.properties.COUNTYNAME];
               if (display !== selectedCounty)
-                g.selectAll("path").filter(p => p === found).attr("fill", "#9ab88a");
+                g.selectAll("path").filter(p => p === found).attr("fill", "#4a6741");
             } else {
               svg.style("cursor", "default");
             }
@@ -169,7 +209,7 @@
             if (hoveredFeature) {
               const prev = COUNTY_NORMALIZE[hoveredFeature.properties.COUNTYNAME];
               if (prev !== selectedCounty)
-                g.selectAll("path").filter(p => p === hoveredFeature).attr("fill", "#eef3eb");
+                g.selectAll("path").filter(p => p === hoveredFeature).attr("fill", "#6b8a5e");
               hoveredFeature = null;
             }
             svg.style("cursor", "default");
@@ -180,8 +220,8 @@
             if (!found) return;
             const display = COUNTY_NORMALIZE[found.properties.COUNTYNAME];
             if (!display) return;
-            g.selectAll("path").attr("fill", p => ISLANDS.has(p.properties.COUNTYNAME) ? "#f3f4f6" : "#eef3eb");
-            g.selectAll("path").filter(p => p === found).attr("fill", "#5a7c50");
+            g.selectAll("path").attr("fill", p => ISLANDS.has(p.properties.COUNTYNAME) ? "#f3f4f6" : "#6b8a5e");
+            g.selectAll("path").filter(p => p === found).attr("fill", "#4a6741");
             selectedCounty = display;
             loadCounty(display);
           });
@@ -204,7 +244,7 @@
       if (visualLayer)
         visualLayer.selectAll("path")
           .filter(d => !ISLANDS.has(d.properties.COUNTYNAME))
-          .attr("fill", "#eef3eb");
+          .attr("fill", "#6b8a5e");
     }
   }
 
@@ -232,16 +272,153 @@
     pageLoading = false;
   }
 
-  document.addEventListener('DOMContentLoaded', () => {
-    const today = new Date().toISOString().slice(0, 10);
-    document.getElementById('date-from').value = today;
-    document.getElementById('date-to').value   = today;
+  // ── 自製雙月日曆 ─────────────────────────────────────────────────────────
+  const MONTH_NAMES = ['一月','二月','三月','四月','五月','六月',
+                       '七月','八月','九月','十月','十一月','十二月'];
+  const DAY_NAMES   = ['日','一','二','三','四','五','六'];
+  const fmtDate = d => {
+    const m = String(d.getMonth() + 1).padStart(2, '0');
+    const dy = String(d.getDate()).padStart(2, '0');
+    return `${d.getFullYear()}-${m}-${dy}`;
+  };
 
+  let calStart = null, calEnd = null;
+  let calBaseYear, calBaseMonth;
+
+  function initCalendar() {
+    const now = new Date();
+    calBaseYear  = now.getFullYear();
+    calBaseMonth = now.getMonth();
+    if (DATE_MIN && DATE_MAX) {
+      calStart = new Date(DATE_MIN);
+      calEnd   = new Date(DATE_MAX);
+      calBaseYear  = calEnd.getFullYear();
+      calBaseMonth = calEnd.getMonth();
+    }
+    renderCalendar();
+    if (DATE_MIN && DATE_MAX) loadDate();
+  }
+
+  function renderCalendar() {
+    let ly = calBaseYear, lm = calBaseMonth - 1;
+    if (lm < 0) { lm = 11; ly--; }
+    renderMonth('cal-month-left',  ly, lm, true);
+    renderMonth('cal-month-right', calBaseYear, calBaseMonth, false);
+    const s = document.getElementById('cal-summary');
+    s.textContent = calStart && calEnd
+      ? `${fmtDate(calStart)} ～ ${fmtDate(calEnd)}`
+      : calStart ? fmtDate(calStart) : '';
+  }
+
+  function renderMonth(id, year, month, isLeft) {
+    const prevBtn = isLeft
+      ? `<button onclick="calNav(-1)" class="size-8 flex justify-center items-center text-gray-700 hover:bg-gray-100 rounded-full text-lg leading-none">&#8249;</button>`
+      : `<button class="opacity-0 pointer-events-none size-8 flex justify-center items-center rounded-full"></button>`;
+    const nextBtn = !isLeft
+      ? `<button onclick="calNav(1)" class="size-8 flex justify-center items-center text-gray-700 hover:bg-gray-100 rounded-full text-lg leading-none">&#8250;</button>`
+      : `<button class="opacity-0 pointer-events-none size-8 flex justify-center items-center rounded-full"></button>`;
+
+    const firstDay    = new Date(year, month, 1).getDay();
+    const daysInMonth = new Date(year, month + 1, 0).getDate();
+    const daysInPrev  = new Date(year, month, 0).getDate();
+
+    let cells = [];
+    for (let i = firstDay - 1; i >= 0; i--)
+      cells.push({ d: daysInPrev - i, m: (month + 11) % 12, y: month === 0 ? year - 1 : year, off: true });
+    for (let d = 1; d <= daysInMonth; d++)
+      cells.push({ d, m: month, y: year, off: false });
+    const rem = 7 - (cells.length % 7);
+    if (rem < 7)
+      for (let d = 1; d <= rem; d++)
+        cells.push({ d, m: (month + 1) % 12, y: month === 11 ? year + 1 : year, off: true });
+
+    let weeksHtml = '';
+    for (let w = 0; w < cells.length / 7; w++) {
+      const week = cells.slice(w * 7, w * 7 + 7);
+      weeksHtml += `<div class="flex">`;
+      for (let ci = 0; ci < 7; ci++) weeksHtml += renderDay(week[ci], ci);
+      weeksHtml += `</div>`;
+    }
+
+    document.getElementById(id).innerHTML = `
+      <div class="grid grid-cols-5 items-center gap-x-3 mx-1.5 pb-3">
+        <div class="col-span-1">${prevBtn}</div>
+        <div class="col-span-3 flex justify-center">
+          <span class="font-medium text-sm text-gray-700">${MONTH_NAMES[month]} ${year}</span>
+        </div>
+        <div class="col-span-1 flex justify-end">${nextBtn}</div>
+      </div>
+      <div class="flex pb-1.5">
+        ${DAY_NAMES.map(n => `<span class="m-px w-10 block text-center text-xs text-gray-400">${n}</span>`).join('')}
+      </div>
+      ${weeksHtml}`;
+  }
+
+  function renderDay(cell, col) {
+    const dateObj = new Date(cell.y, cell.m, cell.d);
+    const ds      = fmtDate(dateObj);
+    const isStart = calStart && fmtDate(calStart) === ds;
+    const isEnd   = calEnd   && fmtDate(calEnd)   === ds;
+    const inRange = calStart && calEnd && dateObj > calStart && dateObj < calEnd;
+
+    let wrap = '', btn = 'm-px size-10 flex justify-center items-center border-[1.5px] border-transparent text-sm rounded-full';
+    if (cell.off) {
+      btn += ' text-gray-300 pointer-events-none';
+    } else if (isStart && isEnd) {
+      btn += ' bg-[#5a7c50] text-white font-medium';
+    } else if (isStart) {
+      wrap = 'bg-[#eef3eb] rounded-s-full';
+      btn += ' bg-[#5a7c50] text-white font-medium';
+    } else if (isEnd) {
+      wrap = 'bg-[#eef3eb] rounded-e-full';
+      btn += ' bg-[#5a7c50] text-white font-medium';
+    } else if (inRange) {
+      wrap = 'bg-[#eef3eb]' + (col === 0 ? ' rounded-s-full' : '') + (col === 6 ? ' rounded-e-full' : '');
+      btn += ' text-gray-700';
+    } else {
+      btn += ' text-gray-700 hover:border-[#4a6741] hover:text-[#4a6741]';
+    }
+    const click = cell.off ? '' : `onclick="calClick('${ds}')"`;
+    return `<div class="${wrap}"><button type="button" ${click} class="${btn}">${cell.d}</button></div>`;
+  }
+
+  function calClick(ds) {
+    const d = new Date(ds);
+    if (!calStart || (calStart && calEnd)) { calStart = d; calEnd = null; }
+    else if (d < calStart) { calEnd = calStart; calStart = d; }
+    else { calEnd = d; }
+    renderCalendar();
+  }
+
+  function calNav(dir) {
+    calBaseMonth += dir;
+    if (calBaseMonth > 11) { calBaseMonth = 0; calBaseYear++; }
+    if (calBaseMonth <  0) { calBaseMonth = 11; calBaseYear--; }
+    renderCalendar();
+  }
+
+  function applyDate() {
+    if (!calStart) return;
+    document.getElementById('date-from').value = fmtDate(calStart);
+    document.getElementById('date-to').value   = calEnd ? fmtDate(calEnd) : fmtDate(calStart);
+    loadDate();
+  }
+
+  function cancelDate() {
+    calStart = null; calEnd = null;
+    document.querySelectorAll('.preset-btn').forEach(b => {
+      b.classList.remove('bg-[#5a7c50]', 'text-white', 'border-[#5a7c50]', 'hover:bg-[#4a6741]', 'hover:text-white');
+      b.classList.add('border-gray-200', 'text-gray-500');
+    });
+    renderCalendar();
+  }
+
+  document.addEventListener('DOMContentLoaded', () => {
+    initCalendar();
     document.getElementById('results').addEventListener('scroll', () => {
       const r = document.getElementById('results');
       if (r.scrollTop + r.clientHeight >= r.scrollHeight - 200) loadMore();
     });
-
     initMap();
   });
 
@@ -259,14 +436,22 @@
     updateResults(url);
   }
 
-  function loadPreset(n, unit) {
-    const today = new Date();
-    const from  = new Date(today);
-    if (unit === 'month') from.setMonth(from.getMonth() - n);
-    else                   from.setFullYear(from.getFullYear() - n);
-    document.getElementById('date-from').value = from.toISOString().slice(0, 10);
-    document.getElementById('date-to').value   = today.toISOString().slice(0, 10);
-    loadDate();
+  function applyPreset(el, n, unit) {
+    document.querySelectorAll('.preset-btn').forEach(b => {
+      b.classList.remove('bg-[#5a7c50]', 'text-white', 'border-[#5a7c50]', 'hover:bg-[#4a6741]', 'hover:text-white');
+      b.classList.add('border-gray-200', 'text-gray-500');
+    });
+    el.classList.remove('border-gray-200', 'text-gray-500');
+    el.classList.add('bg-[#5a7c50]', 'text-white', 'border-[#5a7c50]', 'hover:bg-[#4a6741]', 'hover:text-white');
+
+    calEnd   = new Date();
+    calStart = new Date();
+    if (unit === 'month') calStart.setMonth(calStart.getMonth() - n);
+    else                   calStart.setFullYear(calStart.getFullYear() - n);
+    calBaseYear  = calEnd.getFullYear();
+    calBaseMonth = calEnd.getMonth();
+    renderCalendar();
+    applyDate();
   }
 
   function loadSearch() {

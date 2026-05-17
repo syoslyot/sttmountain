@@ -28,15 +28,13 @@ REGIONS = {
 
 SUFFIXES = ["縱走隊", "登頂隊", "健行隊", "探勘隊", "溯溪隊", "攀岩隊"]
 
-MEMBER_NAMES = [
+LEADER_NAMES = [
     "陳志明", "林雅惠", "黃建宏", "王怡君", "李明哲", "張雅婷",
     "劉俊賢", "吳佩珊", "蔡宗翰", "鄭淑芬", "謝志豪", "許雅雯",
     "曾建志", "蕭怡婷", "洪瑞祥", "楊淑慧", "邱志偉", "賴雅琪",
     "方建國", "葉佳穎", "潘志遠", "鍾雅玲", "江志成", "韓佩君",
     "周大偉", "余淑貞", "孫志強", "文佳慧", "石志明", "柯雅琴",
 ]
-
-ROLES = ["隊長", "副隊長", "隊員", "嚮導", "醫療", None, None, None]
 
 START = date(2018, 1, 1)
 END = date(2025, 12, 31)
@@ -56,7 +54,7 @@ def seed(append: bool = False):
     conn.execute("PRAGMA foreign_keys = ON")
 
     if not append:
-        for tbl in ("records", "map_files", "gpx_files", "members", "expeditions"):
+        for tbl in ("records", "map_files", "gpx_files", "expeditions"):
             conn.execute(f"DELETE FROM {tbl}")
         conn.commit()
         print("已清空所有資料。")
@@ -77,10 +75,11 @@ def seed(append: bool = False):
         date_end = d_end.strftime("%Y-%m-%d") if d_end else None
         description = f"{county}{region}一帶的登山活動，行程約{(d_end - d_start).days if d_end else 1}天。" if d_end else None
 
+        leader = random.choice(LEADER_NAMES)
         cur = conn.execute(
-            "INSERT OR IGNORE INTO expeditions(name, date_start, date_end, county, region, description) "
-            "VALUES (?, ?, ?, ?, ?, ?)",
-            (name, date_start, date_end, county, region, description),
+            "INSERT OR IGNORE INTO expeditions(name, date_start, date_end, county, region, leader, description) "
+            "VALUES (?, ?, ?, ?, ?, ?, ?)",
+            (name, date_start, date_end, county, region, leader, description),
         )
         conn.commit()
 
@@ -90,15 +89,6 @@ def seed(append: bool = False):
 
         exp_id = cur.lastrowid
         inserted += 1
-
-        # members: 2–6 人
-        pool = random.sample(MEMBER_NAMES, k=random.randint(2, 6))
-        for i, mname in enumerate(pool):
-            role = ROLES[i] if i < len(ROLES) else None
-            conn.execute(
-                "INSERT INTO members(expedition_id, name, role) VALUES (?, ?, ?)",
-                (exp_id, mname, role),
-            )
 
         # gpx_files: 0 or 1
         if random.random() < 0.5:

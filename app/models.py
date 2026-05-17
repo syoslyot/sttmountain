@@ -13,6 +13,7 @@ CREATE TABLE IF NOT EXISTS expeditions (
     date_end    TEXT CHECK(date_end IS NULL OR date_end GLOB '????-??-??'),
     county      TEXT,
     region      TEXT,
+    leader      TEXT,
     description   TEXT,
     preview_image TEXT,
     created_at    TEXT NOT NULL DEFAULT (date('now')),
@@ -21,15 +22,6 @@ CREATE TABLE IF NOT EXISTS expeditions (
 
 CREATE INDEX IF NOT EXISTS idx_exp_county ON expeditions(county);
 CREATE INDEX IF NOT EXISTS idx_exp_date   ON expeditions(date_start);
-
-CREATE TABLE IF NOT EXISTS members (
-    id            INTEGER PRIMARY KEY AUTOINCREMENT,
-    expedition_id INTEGER NOT NULL REFERENCES expeditions(id) ON DELETE CASCADE,
-    name          TEXT NOT NULL,
-    role          TEXT,
-    department    TEXT,
-    experience    TEXT
-);
 
 CREATE TABLE IF NOT EXISTS gpx_files (
     id            INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -68,11 +60,6 @@ def get_conn() -> sqlite3.Connection:
 def init_db():
     with get_conn() as conn:
         conn.executescript(SCHEMA)
-        for col in ("department", "experience"):
-            try:
-                conn.execute(f"ALTER TABLE members ADD COLUMN {col} TEXT")
-            except sqlite3.OperationalError:
-                pass
         try:
             conn.execute("ALTER TABLE expeditions ADD COLUMN preview_image TEXT")
         except sqlite3.OperationalError:

@@ -8,7 +8,7 @@
   <link href="https://fonts.googleapis.com/css2?family=Noto+Serif+TC:wght@300;400;700&family=Noto+Sans+TC:wght@300;400;500&display=swap" rel="stylesheet">
   <script src="https://cdn.tailwindcss.com"></script>
   <style>
-    body { font-family: 'Noto Serif TC', serif; }
+    body { font-family: 'Noto Sans TC', sans-serif; }
   </style>
   {% block head %}{% endblock %}
 </head>
@@ -16,9 +16,9 @@
 
   {# ── Navbar ── #}
   {% set path = request.url.path %}
-  <nav class="bg-[#6b8a5e] text-white py-4 flex items-center justify-between shadow-sm shrink-0"
-       style="padding-left: calc(50vw/6 - 0.5rem); padding-right: 2rem;">
-    <a href="/" class="text-[19px] tracking-[0.2em] font-bold" style="font-family:'Noto Serif TC',serif;">成大山協</a>
+  <nav class="bg-[#6b8a5e] text-white py-2 flex items-center justify-between shadow-sm shrink-0"
+       style="padding-left: calc(50vw/6 - 1.3rem); padding-right: 2rem;">
+    <a href="/" class="text-[27px] tracking-[0.2em]">成大山協</a>
     {% block navbar_extra %}{% endblock %}
   </nav>
 

@@ -15,18 +15,20 @@ from pathlib import Path
 import fitz
 import openpyxl
 from openpyxl.worksheet.properties import PageSetupProperties
+from openpyxl.worksheet.page import PageMargins
 from PIL import Image, ImageOps
 
 DB_PATH         = Path(__file__).parent.parent / "db" / "sttmount.db"
 STATIC_MAPS     = Path(__file__).parent.parent / "app" / "static" / "maps"
 STATIC_PREVIEWS = Path(__file__).parent.parent / "app" / "static" / "previews"
-XLSX_DIR        = Path(__file__).parent.parent / "data" / "raw" / "xlsx"
+XLSX_STAGING    = Path(__file__).parent.parent / "data" / "raw"          # 未處理 xlsx
+XLSX_DIR        = Path(__file__).parent.parent / "data" / "raw" / "xlsx" # 已處理 xlsx
 TXT_DIR         = Path(__file__).parent.parent / "data" / "raw" / "txt"
 GPX_DIR         = Path(__file__).parent.parent / "app" / "static" / "gpx"
 
 GPX_EXTS    = {".gpx", ".kml"}
 MAP_EXTS    = {".pdf"}
-RECORD_EXTS = {".txt", ".md", ".docx"}
+RECORD_EXTS = {".txt", ".md", ".docx", ".pdf"}
 
 COUNTY_NORMALIZE = {
     "臺北市": "台北", "台北市": "台北",
@@ -87,6 +89,10 @@ def capture_sheet_range(xlsx_path: Path, sheet_name: str, cell_range: str, outpu
             ws.sheet_properties.pageSetUpPr = PageSetupProperties(fitToPage=True)
         else:
             ws.sheet_properties.pageSetUpPr.fitToPage = True
+        ws.page_setup.fitToWidth = 1
+        ws.page_setup.fitToHeight = 0
+        ws.page_setup.scale = None
+        ws.page_margins = PageMargins(left=0.2, right=0.2, top=0.2, bottom=0.2, header=0, footer=0)
         for name in list(wb.sheetnames):
             if name != sheet_name:
                 del wb[name]
@@ -144,57 +150,54 @@ def build_a4_preview(paths: list[Path], output_path: Path):
     canvas.save(str(output_path))
 
 
-def scan_static_files(exp_name: str, exp_id: int, conn: sqlite3.Connection):
-    prefix = exp_name + '_'
-
-    for src in sorted(GPX_DIR.glob(f"{exp_name}_*")):
-        if src.suffix.lower() in GPX_EXTS:
-            original = src.name[len(prefix):]
-            dest = GPX_DIR / f"{exp_id}_{original}"
-            if src != dest and not dest.exists():
-                src.rename(dest)
-            conn.execute(
-                "INSERT OR IGNORE INTO gpx_files(expedition_id, file_path) VALUES (?,?)",
-                (exp_id, dest.name),
-            )
-
-    for src in sorted(STATIC_MAPS.glob(f"{exp_name}_*")):
-        if src.suffix.lower() in MAP_EXTS:
-            original = src.name[len(prefix):]
-            dest = STATIC_MAPS / f"{exp_id}_{original}"
-            if src != dest and not dest.exists():
-                src.rename(dest)
-            conn.execute(
-                "INSERT OR IGNORE INTO map_files(expedition_id, file_path) VALUES (?,?)",
-                (exp_id, dest.name),
-            )
-
-    for src in sorted(TXT_DIR.glob(f"{exp_name}_*")):
-        if src.suffix.lower() not in RECORD_EXTS:
+def scan_static_files(exp_id: int, conn: sqlite3.Connection):
+    for src in sorted(GPX_DIR.iterdir()):
+        if src.name == ".gitkeep" or src.suffix.lower() not in GPX_EXTS:
             continue
-        original = src.name[len(prefix):]
-        dest = TXT_DIR / f"{exp_id}_{original}"
-        if src != dest and not dest.exists():
-            src.rename(dest)
-        exists = conn.execute(
-            "SELECT 1 FROM records WHERE expedition_id=? AND filename=?",
-            (exp_id, dest.name),
-        ).fetchone()
-        if not exists:
-            if dest.suffix.lower() == ".docx":
-                from docx import Document
-                content = "\n".join(
-                    p.text for p in Document(dest).paragraphs if p.text.strip()
-                )
-            else:
-                content = dest.read_text(encoding="utf-8", errors="replace")
+        if not conn.execute("SELECT 1 FROM gpx_files WHERE file_path=?", (src.name,)).fetchone():
             conn.execute(
-                "INSERT INTO records(expedition_id, filename, content) VALUES (?,?,?)",
-                (exp_id, dest.name, content),
+                "INSERT INTO gpx_files(expedition_id, file_path) VALUES (?,?)",
+                (exp_id, src.name),
             )
+
+    for src in sorted(STATIC_MAPS.iterdir()):
+        if src.name == ".gitkeep" or src.suffix.lower() not in MAP_EXTS:
+            continue
+        if not conn.execute("SELECT 1 FROM map_files WHERE file_path=?", (src.name,)).fetchone():
+            conn.execute(
+                "INSERT INTO map_files(expedition_id, file_path) VALUES (?,?)",
+                (exp_id, src.name),
+            )
+
+    for src in sorted(TXT_DIR.iterdir()):
+        if src.name == ".gitkeep" or src.suffix.lower() not in RECORD_EXTS:
+            continue
+        if conn.execute("SELECT 1 FROM records WHERE filename=?", (src.name,)).fetchone():
+            continue
+        ext = src.suffix.lower()
+        if ext == ".docx":
+            from docx import Document
+            doc = Document(src)
+            parts = [p.text for p in doc.paragraphs if p.text.strip()]
+            for table in doc.tables:
+                for row in table.rows:
+                    row_text = "  ".join(c.text.strip() for c in row.cells if c.text.strip())
+                    if row_text:
+                        parts.append(row_text)
+            content = "\n".join(parts)
+        elif ext == ".pdf":
+            doc = fitz.open(str(src))
+            content = "\n".join(page.get_text() for page in doc)
+            doc.close()
+        else:
+            content = src.read_text(encoding="utf-8", errors="replace")
+        conn.execute(
+            "INSERT INTO records(expedition_id, filename, content) VALUES (?,?,?)",
+            (exp_id, src.name, content),
+        )
 
     conn.commit()
-    print(f"    靜態檔案已掃描：{exp_name}/")
+    print(f"    靜態檔案已掃描")
 
 
 def parse_p1(ws):
@@ -233,7 +236,7 @@ def parse_p2(ws):
     # col F(6) = 資歷（格式「A/奇萊東稜下嵐山」）
     members: list[tuple[str, str | None, str | None, str | None]] = []
     current_role: str | None = None
-    for r in range(16, ws.max_row + 1):
+    for r in range(15, ws.max_row + 1):
         role_abbr = str(ws.cell(r, 1).value or "").strip()
         dept_raw  = str(ws.cell(r, 2).value or "").strip()
         name_raw  = str(ws.cell(r, 4).value or "").strip()
@@ -286,7 +289,7 @@ def normalize(xlsx_path: Path):
     if existing:
         exp_id = existing[0]
         print(f"  → 已存在（id={exp_id}）：{name}，補掃靜態檔案")
-        scan_static_files(name, exp_id, conn)
+        scan_static_files(exp_id, conn)
         conn.close()
         return
 
@@ -312,18 +315,13 @@ def normalize(xlsx_path: Path):
         )
     conn.commit()
 
-    prefix = name + '_'
-    if xlsx_path.stem.startswith(prefix):
-        original = xlsx_path.stem[len(prefix):] + xlsx_path.suffix
-        xlsx_final = xlsx_path.parent / f"{exp_id}_{original}"
-    elif xlsx_path.stem.startswith(f"{exp_id}_"):
-        xlsx_final = xlsx_path
-    else:
-        xlsx_final = xlsx_path
-    if xlsx_path != xlsx_final and not xlsx_final.exists():
-        xlsx_path.rename(xlsx_final)
+    XLSX_DIR.mkdir(parents=True, exist_ok=True)
+    xlsx_dest = XLSX_DIR / xlsx_path.name
+    if xlsx_path != xlsx_dest and not xlsx_dest.exists():
+        xlsx_path.rename(xlsx_dest)
+        xlsx_path = xlsx_dest
 
-    scan_static_files(name, exp_id, conn)
+    scan_static_files(exp_id, conn)
     conn.close()
 
     print(f"  ✓ 已插入：{name}（id={exp_id}）")
@@ -341,14 +339,14 @@ def normalize(xlsx_path: Path):
 
         print(f"    截圖 P1...", end=" ", flush=True)
         if "直企P1(列印)" in wb.sheetnames:
-            capture_sheet_range(xlsx_final, "直企P1(列印)", "A2:G27", p1_path)
+            capture_sheet_range(xlsx_path, "直企P1(列印)", "A2:G27", p1_path)
             print("完成" if p1_path.exists() else "失敗")
         else:
             print("跳過")
 
         print(f"    截圖 P2...", end=" ", flush=True)
         if "直企P2(列印)" in wb.sheetnames:
-            capture_sheet_range(xlsx_final, "直企P2(列印)", "B2:O11", p2_path)
+            capture_sheet_range(xlsx_path, "直企P2(列印)", "B2:O11", p2_path)
             print("完成" if p2_path.exists() else "失敗")
         else:
             print("跳過")
@@ -365,8 +363,8 @@ def normalize(xlsx_path: Path):
 
 
 def main():
-    target = Path(sys.argv[1]) if len(sys.argv) >= 2 else XLSX_DIR
-    files = sorted(target.glob("**/*.xlsx")) if target.is_dir() else [target]
+    target = Path(sys.argv[1]) if len(sys.argv) >= 2 else XLSX_STAGING
+    files = sorted(target.glob("*.xlsx")) if target.is_dir() else [target]
 
     for f in files:
         print(f"\n處理：{f.name}")
