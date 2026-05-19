@@ -3,8 +3,6 @@ name: CI - Sync, Build, Deploy
 on:
   push:
     branches: [main]
-  schedule:
-    - cron: '0 2 * * *'
   workflow_dispatch:
 
 env:
@@ -50,6 +48,10 @@ jobs:
           GDRIVE_ROOT_FOLDER_ID: ${{ secrets.GDRIVE_ROOT_FOLDER_ID }}
         run: python3 scripts/sync_drive.py
 
+      - name: Install LibreOffice
+        if: steps.drive-check.outputs.available == 'true'
+        run: sudo apt-get install -y libreoffice
+
       - name: Normalize Excel to SQLite
         if: steps.drive-check.outputs.available == 'true'
         run: python3 scripts/normalize.py
@@ -67,3 +69,13 @@ jobs:
           context: .
           push: true
           tags: ${{ env.IMAGE_NAME }}:latest
+
+      - name: Trigger sttmountaincrazy rebuild
+        run: |
+          [ -n "$GH_PAT" ] && curl -s -X POST \
+            -H "Authorization: token $GH_PAT" \
+            -H "Accept: application/vnd.github.v3+json" \
+            https://api.github.com/repos/syoslyot/sttmountaincrazy/actions/workflows/ci.yml/dispatches \
+            -d '{"ref":"main"}' || true
+        env:
+          GH_PAT: ${{ secrets.GH_PAT }}

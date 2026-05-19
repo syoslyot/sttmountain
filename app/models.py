@@ -2,8 +2,7 @@ import os
 import sqlite3
 from pathlib import Path
 
-_db_name = "sttmount_dev.db" if os.getenv("ENV") == "dev" else "sttmount.db"
-DB_PATH = Path(__file__).parent.parent / "db" / _db_name
+DB_PATH = Path(__file__).parent.parent / "db" / "sttmountain.db"
 
 SCHEMA = """
 PRAGMA foreign_keys = ON;

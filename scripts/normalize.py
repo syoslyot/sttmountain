@@ -18,7 +18,7 @@ from openpyxl.worksheet.properties import PageSetupProperties
 from openpyxl.worksheet.page import PageMargins
 from PIL import Image, ImageOps
 
-DB_PATH         = Path(__file__).parent.parent / "db" / "sttmount.db"
+DB_PATH         = Path(__file__).parent.parent / "db" / "sttmountain.db"
 STATIC_MAPS     = Path(__file__).parent.parent / "app" / "static" / "maps"
 STATIC_PREVIEWS = Path(__file__).parent.parent / "app" / "static" / "previews"
 XLSX_STAGING    = Path(__file__).parent.parent / "data" / "raw"          # 未處理 xlsx
