@@ -3,6 +3,8 @@ __pycache__/
 *.pyc
 .env
 db/sttmount.db
+db/sttmount_dev.db
+.venv/
 !db/.gitkeep
 app/static/gpx/*
 !app/static/gpx/.gitkeep
