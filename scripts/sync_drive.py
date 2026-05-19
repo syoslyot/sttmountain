@@ -27,7 +27,7 @@ from googleapiclient.http import MediaIoBaseDownload
 
 SCOPES = ["https://www.googleapis.com/auth/drive.readonly"]
 
-XLSX_DIR = Path(__file__).parent.parent / "data" / "raw" / "xlsx"
+XLSX_STAGING = Path(__file__).parent.parent / "data" / "raw"
 TXT_DIR  = Path(__file__).parent.parent / "data" / "raw" / "txt"
 GPX_DIR  = Path(__file__).parent.parent / "app" / "static" / "gpx"
 MAPS_DIR = Path(__file__).parent.parent / "app" / "static" / "maps"
@@ -94,7 +94,7 @@ def download_google_doc(service, file_id: str, dest: Path):
 
 
 def sync_expedition(service, exp_folder_id: str, exp_name: str):
-    XLSX_DIR.mkdir(parents=True, exist_ok=True)
+    XLSX_STAGING.mkdir(parents=True, exist_ok=True)
 
     items = list_folder(service, exp_folder_id)
     for item in items:
@@ -110,7 +110,7 @@ def sync_expedition(service, exp_folder_id: str, exp_name: str):
             elif name_low in {n.lower() for n in REC_SUBFOLDER_NAMES}:
                 sync_record_folder(service, fid, exp_name)
         elif ext in EXCEL_EXTS:
-            download_file(service, fid, XLSX_DIR / f"{exp_name}_{name}")
+            download_file(service, fid, XLSX_STAGING / f"{exp_name}_{name}")
 
 
 def sync_map_folder(service, folder_id: str, exp_name: str):
