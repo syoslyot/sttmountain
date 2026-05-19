@@ -90,29 +90,40 @@ def seed(append: bool = False):
         exp_id = cur.lastrowid
         inserted += 1
 
-        # gpx_files: 0 or 1
+        # gpx_files: 50% 機率有，有則 1–3 筆
         if random.random() < 0.5:
-            fname = f"{name}.gpx"
-            conn.execute(
-                "INSERT OR IGNORE INTO gpx_files(expedition_id, filename, file_path) VALUES (?, ?, ?)",
-                (exp_id, fname, fname),
-            )
+            n_gpx = random.randint(1, 3)
+            labels = ["主線", "支線A", "支線B"][:n_gpx]
+            for label in labels:
+                suffix = f"_{label}" if n_gpx > 1 else ""
+                fname = f"{name}{suffix}.gpx"
+                conn.execute(
+                    "INSERT OR IGNORE INTO gpx_files(expedition_id, filename, file_path) VALUES (?, ?, ?)",
+                    (exp_id, fname, fname),
+                )
 
-        # map_files: 0 or 1
+        # map_files: 50% 機率有，有則 1–2 筆
         if random.random() < 0.5:
-            fname = f"{name}.pdf"
-            conn.execute(
-                "INSERT OR IGNORE INTO map_files(expedition_id, filename, file_path, file_type) VALUES (?, ?, ?, ?)",
-                (exp_id, fname, fname, "pdf"),
-            )
+            n_map = random.randint(1, 2)
+            map_labels = [("地圖", "pdf"), ("高度表", "pdf")][:n_map]
+            for label, ftype in map_labels:
+                suffix = f"_{label}" if n_map > 1 else ""
+                fname = f"{name}{suffix}.pdf"
+                conn.execute(
+                    "INSERT OR IGNORE INTO map_files(expedition_id, filename, file_path, file_type) VALUES (?, ?, ?, ?)",
+                    (exp_id, fname, fname, ftype),
+                )
 
-        # records: 0 or 1
+        # records: 50% 機率有，有則 1–3 筆
         if random.random() < 0.5:
-            fname = f"{region}_record.txt"
-            conn.execute(
-                "INSERT OR IGNORE INTO records(expedition_id, filename, content) VALUES (?, ?, ?)",
-                (exp_id, fname, f"{name} 出隊紀錄。日期：{date_start}。地點：{county} · {region}。"),
-            )
+            n_rec = random.randint(1, 3)
+            rec_labels = ["隊長紀錄", "隊員紀錄A", "隊員紀錄B"][:n_rec]
+            for label in rec_labels:
+                fname = f"{region}_{label}.txt"
+                conn.execute(
+                    "INSERT OR IGNORE INTO records(expedition_id, filename, content) VALUES (?, ?, ?)",
+                    (exp_id, fname, f"【{label}】{name} 出隊紀錄。日期：{date_start}。地點：{county} · {region}。"),
+                )
 
     conn.commit()
     conn.close()
