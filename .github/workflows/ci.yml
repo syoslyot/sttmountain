@@ -52,6 +52,10 @@ jobs:
         if: steps.drive-check.outputs.available == 'true'
         run: sudo apt-get install -y libreoffice
 
+      - name: Initialize database schema
+        if: steps.drive-check.outputs.available == 'true'
+        run: python3 -c "from app.models import init_db; init_db()"
+
       - name: Normalize Excel to SQLite
         if: steps.drive-check.outputs.available == 'true'
         run: python3 scripts/normalize.py
