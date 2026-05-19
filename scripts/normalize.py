@@ -156,8 +156,8 @@ def scan_static_files(exp_id: int, conn: sqlite3.Connection):
             continue
         if not conn.execute("SELECT 1 FROM gpx_files WHERE file_path=?", (src.name,)).fetchone():
             conn.execute(
-                "INSERT INTO gpx_files(expedition_id, file_path) VALUES (?,?)",
-                (exp_id, src.name),
+                "INSERT INTO gpx_files(expedition_id, filename, file_path) VALUES (?,?,?)",
+                (exp_id, src.name, src.name),
             )
 
     for src in sorted(STATIC_MAPS.iterdir()):
@@ -165,8 +165,8 @@ def scan_static_files(exp_id: int, conn: sqlite3.Connection):
             continue
         if not conn.execute("SELECT 1 FROM map_files WHERE file_path=?", (src.name,)).fetchone():
             conn.execute(
-                "INSERT INTO map_files(expedition_id, file_path) VALUES (?,?)",
-                (exp_id, src.name),
+                "INSERT INTO map_files(expedition_id, filename, file_path) VALUES (?,?,?)",
+                (exp_id, src.name, src.name),
             )
 
     for src in sorted(TXT_DIR.iterdir()):
