@@ -50,7 +50,7 @@ jobs:
 
       - name: Install LibreOffice
         if: steps.drive-check.outputs.available == 'true'
-        run: sudo apt-get install -y libreoffice
+        run: sudo apt-get install -y libreoffice fonts-noto-cjk
 
       - name: Initialize database schema
         if: steps.drive-check.outputs.available == 'true'
