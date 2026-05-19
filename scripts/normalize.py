@@ -150,9 +150,13 @@ def build_a4_preview(paths: list[Path], output_path: Path):
     canvas.save(str(output_path))
 
 
-def scan_static_files(exp_id: int, conn: sqlite3.Connection):
+def scan_static_files(exp_id: int, exp_name: str, conn: sqlite3.Connection):
+    prefix = exp_name + "_"
+
     for src in sorted(GPX_DIR.iterdir()):
         if src.name == ".gitkeep" or src.suffix.lower() not in GPX_EXTS:
+            continue
+        if not src.name.startswith(prefix):
             continue
         if not conn.execute("SELECT 1 FROM gpx_files WHERE file_path=?", (src.name,)).fetchone():
             conn.execute(
@@ -163,6 +167,8 @@ def scan_static_files(exp_id: int, conn: sqlite3.Connection):
     for src in sorted(STATIC_MAPS.iterdir()):
         if src.name == ".gitkeep" or src.suffix.lower() not in MAP_EXTS:
             continue
+        if not src.name.startswith(prefix):
+            continue
         if not conn.execute("SELECT 1 FROM map_files WHERE file_path=?", (src.name,)).fetchone():
             conn.execute(
                 "INSERT INTO map_files(expedition_id, filename, file_path) VALUES (?,?,?)",
@@ -171,6 +177,8 @@ def scan_static_files(exp_id: int, conn: sqlite3.Connection):
 
     for src in sorted(TXT_DIR.iterdir()):
         if src.name == ".gitkeep" or src.suffix.lower() not in RECORD_EXTS:
+            continue
+        if not src.name.startswith(prefix):
             continue
         if conn.execute("SELECT 1 FROM records WHERE filename=?", (src.name,)).fetchone():
             continue
@@ -289,7 +297,7 @@ def normalize(xlsx_path: Path):
     if existing:
         exp_id = existing[0]
         print(f"  → 已存在（id={exp_id}）：{name}，補掃靜態檔案")
-        scan_static_files(exp_id, conn)
+        scan_static_files(exp_id, name, conn)
         conn.close()
         return
 
@@ -321,7 +329,7 @@ def normalize(xlsx_path: Path):
         xlsx_path.rename(xlsx_dest)
         xlsx_path = xlsx_dest
 
-    scan_static_files(exp_id, conn)
+    scan_static_files(exp_id, name, conn)
     conn.close()
 
     print(f"  ✓ 已插入：{name}（id={exp_id}）")
