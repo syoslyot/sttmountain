@@ -54,6 +54,7 @@
     </div>
     {% endif %}
     <div id="elevation-div" style="height: 140px;"></div>
+    <div id="elevation-placeholder" class="hidden items-center justify-center text-sm text-gray-400" style="height: 140px;">KML 格式不支援高度剖面</div>
   </div>
   {% endif %}
 </div>
@@ -157,7 +158,6 @@
   } else {
     // ── 多檔案：Tab 切換 ────────────────────────────────────────────────────
     const _omni = new Array(_TRACKS.length).fill(null);
-    let _elev = null;
     let _activeIdx = -1;
     let _readyN = 0;
     const _bounds = [];
@@ -180,6 +180,12 @@
       _omni[i] = layer;
     });
 
+    // 建立唯一一個 elevation control，之後只用 clear() + load() 切換
+    const _firstGpx = _TRACKS.findIndex(function(t) { return !t.kml; });
+    const _elev = _firstGpx >= 0 ? L.control.elevation(_ELEV_OPTS).addTo(map) : null;
+    const _elevDiv = document.getElementById("elevation-div");
+    const _elevPlaceholder = document.getElementById("elevation-placeholder");
+
     window.switchElevTab = function(idx) {
       if (idx === _activeIdx) return;
 
@@ -195,28 +201,25 @@
         btn.classList.toggle("hover:bg-gray-100", i !== idx);
       });
 
-      // 拆掉舊 elevation control
-      if (_elev) { _elev.remove(); _elev = null; }
       _activeIdx = idx;
-
       const t = _TRACKS[idx];
-      const div = document.getElementById("elevation-div");
-      div.innerHTML = "";
 
       if (t.kml) {
-        div.innerHTML = '<div class="flex h-full items-center justify-center text-sm text-gray-400">KML 格式不支援高度剖面</div>';
+        // KML：清空高度資料，顯示 placeholder
+        if (_elev) _elev.clear();
+        _elevDiv.style.display = "none";
+        _elevPlaceholder.style.display = "flex";
         return;
       }
 
-      // 隱藏此 track 的灰色 omnivore 層（elevation.load 會用彩色重繪）
+      // GPX：隱藏 placeholder，顯示 elevation div，清除舊資料再載入
+      _elevPlaceholder.style.display = "none";
+      _elevDiv.style.display = "";
       if (_omni[idx]) map.removeLayer(_omni[idx]);
-
-      _elev = L.control.elevation(_ELEV_OPTS).addTo(map);
-      _elev.load(t.path);
+      if (_elev) { _elev.clear(); _elev.load(t.path); }
     };
 
     // 自動選擇第一個 GPX tab（若全是 KML 則選第一個）
-    const _firstGpx = _TRACKS.findIndex(function(t) { return !t.kml; });
     switchElevTab(_firstGpx >= 0 ? _firstGpx : 0);
   }
   {% endif %}
