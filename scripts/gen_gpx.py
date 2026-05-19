@@ -1,10 +1,17 @@
+import os
 import sqlite3
 import random
+import sys
 import math
 from datetime import datetime, timedelta
 from pathlib import Path
 
-DB_PATH = Path(__file__).parent.parent / "db" / "sttmount.db"
+if os.getenv("ENV") != "dev":
+    print("拒絕執行：gen_gpx.py 只能在 ENV=dev 環境下執行。")
+    print("請用：ENV=dev python3 scripts/gen_gpx.py")
+    sys.exit(1)
+
+DB_PATH = Path(__file__).parent.parent / "db" / "sttmount_dev.db"
 GPX_DIR = Path(__file__).parent.parent / "app" / "static" / "gpx"
 
 COUNTY_CENTER = {

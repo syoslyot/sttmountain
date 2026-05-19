@@ -1,8 +1,10 @@
 services:
   app:
-    image: ghcr.io/syoslyot/sttmount:latest
+    image: ghcr.io/syoslyot/sttmountain:latest
     build: .
     restart: unless-stopped
+    environment:
+      - ENV=prod
 
   nginx:
     image: nginx:alpine

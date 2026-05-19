@@ -1,3 +1,4 @@
+import os
 import sqlite3
 from pathlib import Path
 
@@ -26,13 +27,16 @@ CREATE INDEX IF NOT EXISTS idx_exp_date   ON expeditions(date_start);
 CREATE TABLE IF NOT EXISTS gpx_files (
     id            INTEGER PRIMARY KEY AUTOINCREMENT,
     expedition_id INTEGER NOT NULL REFERENCES expeditions(id) ON DELETE CASCADE,
+    filename      TEXT NOT NULL,
     file_path     TEXT NOT NULL UNIQUE
 );
 
 CREATE TABLE IF NOT EXISTS map_files (
     id            INTEGER PRIMARY KEY AUTOINCREMENT,
     expedition_id INTEGER NOT NULL REFERENCES expeditions(id) ON DELETE CASCADE,
-    file_path     TEXT NOT NULL UNIQUE
+    filename      TEXT NOT NULL,
+    file_path     TEXT NOT NULL UNIQUE,
+    file_type     TEXT NOT NULL DEFAULT 'pdf'
 );
 
 CREATE TABLE IF NOT EXISTS records (
@@ -68,6 +72,15 @@ def init_db():
             conn.execute("ALTER TABLE expeditions ADD COLUMN region_exit TEXT")
         except sqlite3.OperationalError:
             pass
+        for stmt in [
+            "ALTER TABLE gpx_files ADD COLUMN filename TEXT NOT NULL DEFAULT ''",
+            "ALTER TABLE map_files ADD COLUMN filename TEXT NOT NULL DEFAULT ''",
+            "ALTER TABLE map_files ADD COLUMN file_type TEXT NOT NULL DEFAULT 'pdf'",
+        ]:
+            try:
+                conn.execute(stmt)
+            except sqlite3.OperationalError:
+                pass
         conn.execute("""
             INSERT OR IGNORE INTO expedition_counties(expedition_id, county)
             SELECT id, county FROM expeditions WHERE county IS NOT NULL

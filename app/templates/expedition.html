@@ -11,7 +11,7 @@
     <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
       <path stroke-linecap="round" stroke-linejoin="round" d="M3 16.5v2.25A2.25 2.25 0 0 0 5.25 21h13.5A2.25 2.25 0 0 0 21 18.75V16.5M16.5 12 12 16.5m0 0L7.5 12m4.5 4.5V3"/>
     </svg>
-    {{ f.file_path }}
+    {{ f.filename }}
   </a>
   {% endfor %}
   {% for f in map_files %}
@@ -20,7 +20,7 @@
     <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
       <path stroke-linecap="round" stroke-linejoin="round" d="M3 16.5v2.25A2.25 2.25 0 0 0 5.25 21h13.5A2.25 2.25 0 0 0 21 18.75V16.5M16.5 12 12 16.5m0 0L7.5 12m4.5 4.5V3"/>
     </svg>
-    {{ f.file_path }}
+    {{ f.filename }}
   </a>
   {% endfor %}
 </div>
@@ -42,7 +42,20 @@
 <div class="w-1/2 shrink-0 flex flex-col" style="height: calc(100vh - 65px);">
   <div id="map" class="flex-1 min-h-0"></div>
   {% if gpx_files %}
-  <div id="elevation-div" class="shrink-0 bg-white border-t border-gray-200" style="height: 140px;"></div>
+  <div class="shrink-0 bg-white border-t border-gray-200">
+    {% if gpx_files|length > 1 %}
+    <div class="flex gap-1 px-2 pt-1.5 overflow-x-auto">
+      {% for f in gpx_files %}
+      <button onclick="switchElevTab({{ loop.index0 }})"
+              class="gpx-tab shrink-0 px-2.5 py-0.5 rounded text-xs font-medium transition-colors text-gray-500 hover:bg-gray-100">
+        {{ f.filename }}{% if '.kml' in f.file_path %} <span class="opacity-50">(KML)</span>{% endif %}
+      </button>
+      {% endfor %}
+    </div>
+    {% endif %}
+    <div id="elevation-div" style="height: 140px;"></div>
+    <div id="elevation-placeholder" class="hidden items-center justify-center text-sm text-gray-400" style="height: 140px;">KML 格式不支援高度剖面</div>
+  </div>
   {% endif %}
 </div>
 
@@ -121,32 +134,94 @@
   L.control.scale({ metric: true, imperial: false }).addTo(map);
 
   {% if gpx_files %}
-  const elevation = L.control.elevation({
-    theme: "steelblue-theme",
-    detached: true,
-    elevationDiv: "#elevation-div",
-    height: 140,
-    width: 0,
-    margins: { top: 10, right: 20, bottom: 30, left: 50 },
-    followMarker: true,
-    slope: true,
-    speed: false,
-    time: true,
-    summary: false,
-    downloadLink: false,
-  }).addTo(map);
+  const _TRACKS = [
+    {% for f in gpx_files %}
+    { path: "/static/gpx/{{ f.file_path }}", name: "{{ f.filename }}", kml: {{ 'true' if '.kml' in f.file_path else 'false' }} },
+    {% endfor %}
+  ];
+  const _ELEV_OPTS = {
+    theme: "steelblue-theme", detached: true, elevationDiv: "#elevation-div",
+    height: 140, width: 0, margins: { top: 10, right: 20, bottom: 30, left: 50 },
+    followMarker: true, slope: true, speed: false, time: true, summary: false, downloadLink: false,
+  };
 
-  {% for f in gpx_files %}
-  {% if '.kml' in f.file_path %}
-  (function() {
-    const layer = omnivore.kml("/static/gpx/{{ f.file_path }}");
-    layer.on("ready", function() { map.fitBounds(layer.getBounds()); });
-    layer.addTo(map);
-  })();
-  {% else %}
-  elevation.load("/static/gpx/{{ f.file_path }}");
-  {% endif %}
-  {% endfor %}
+  if (_TRACKS.length === 1) {
+    // ── 單一檔案：原有行為 ──────────────────────────────────────────────────
+    const _t = _TRACKS[0];
+    if (_t.kml) {
+      const _l = omnivore.kml(_t.path);
+      _l.on("ready", function() { try { map.fitBounds(_l.getBounds()); } catch(e) {} });
+      _l.addTo(map);
+    } else {
+      L.control.elevation(_ELEV_OPTS).addTo(map).load(_t.path);
+    }
+  } else {
+    // ── 多檔案：Tab 切換 ────────────────────────────────────────────────────
+    const _omni = new Array(_TRACKS.length).fill(null);
+    let _activeIdx = -1;
+    let _readyN = 0;
+    const _bounds = [];
+
+    // 所有 track 先用 omnivore 載入（GPX 用灰色；KML 預設樣式）
+    _TRACKS.forEach(function(t, i) {
+      const customLayer = t.kml ? undefined : L.geoJSON(null, {
+        style: { color: "#94a3b8", weight: 2.5, opacity: 0.7 }
+      });
+      const layer = t.kml
+        ? omnivore.kml(t.path)
+        : omnivore.gpx(t.path, null, customLayer);
+      layer.on("ready", function() {
+        _readyN++;
+        try { _bounds.push(layer.getBounds()); } catch(e) {}
+        if (_readyN === _TRACKS.length && _bounds.length > 0)
+          map.fitBounds(_bounds.reduce(function(a, b) { return a.extend(b); }));
+      });
+      layer.addTo(map);
+      _omni[i] = layer;
+    });
+
+    // 建立唯一一個 elevation control，之後只用 clear() + load() 切換
+    const _firstGpx = _TRACKS.findIndex(function(t) { return !t.kml; });
+    const _elev = _firstGpx >= 0 ? L.control.elevation(_ELEV_OPTS).addTo(map) : null;
+    const _elevDiv = document.getElementById("elevation-div");
+    const _elevPlaceholder = document.getElementById("elevation-placeholder");
+
+    window.switchElevTab = function(idx) {
+      if (idx === _activeIdx) return;
+
+      // 恢復前一個 tab 的灰色 omnivore 層（若為 GPX 且曾被隱藏）
+      if (_activeIdx >= 0 && !_TRACKS[_activeIdx].kml && _omni[_activeIdx])
+        _omni[_activeIdx].addTo(map);
+
+      // 更新 tab 樣式
+      document.querySelectorAll(".gpx-tab").forEach(function(btn, i) {
+        btn.classList.toggle("bg-blue-600", i === idx);
+        btn.classList.toggle("text-white", i === idx);
+        btn.classList.toggle("text-gray-500", i !== idx);
+        btn.classList.toggle("hover:bg-gray-100", i !== idx);
+      });
+
+      _activeIdx = idx;
+      const t = _TRACKS[idx];
+
+      if (t.kml) {
+        // KML：清空高度資料，顯示 placeholder
+        if (_elev) _elev.clear();
+        _elevDiv.style.display = "none";
+        _elevPlaceholder.style.display = "flex";
+        return;
+      }
+
+      // GPX：隱藏 placeholder，顯示 elevation div，清除舊資料再載入
+      _elevPlaceholder.style.display = "none";
+      _elevDiv.style.display = "";
+      if (_omni[idx]) map.removeLayer(_omni[idx]);
+      if (_elev) { _elev.clear(); _elev.load(t.path); }
+    };
+
+    // 自動選擇第一個 GPX tab（若全是 KML 則選第一個）
+    switchElevTab(_firstGpx >= 0 ? _firstGpx : 0);
+  }
   {% endif %}
 </script>
 
