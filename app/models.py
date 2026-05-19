@@ -23,6 +23,15 @@ CREATE TABLE IF NOT EXISTS expeditions (
 CREATE INDEX IF NOT EXISTS idx_exp_county ON expeditions(county);
 CREATE INDEX IF NOT EXISTS idx_exp_date   ON expeditions(date_start);
 
+CREATE TABLE IF NOT EXISTS members (
+    id            INTEGER PRIMARY KEY AUTOINCREMENT,
+    expedition_id INTEGER NOT NULL REFERENCES expeditions(id) ON DELETE CASCADE,
+    name          TEXT NOT NULL,
+    role          TEXT,
+    department    TEXT,
+    experience    TEXT
+);
+
 CREATE TABLE IF NOT EXISTS gpx_files (
     id            INTEGER PRIMARY KEY AUTOINCREMENT,
     expedition_id INTEGER NOT NULL REFERENCES expeditions(id) ON DELETE CASCADE,
