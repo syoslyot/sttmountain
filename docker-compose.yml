@@ -3,6 +3,8 @@ services:
     image: ghcr.io/syoslyot/sttmount:latest
     build: .
     restart: unless-stopped
+    environment:
+      - ENV=prod
 
   nginx:
     image: nginx:alpine

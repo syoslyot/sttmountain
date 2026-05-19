@@ -1,10 +1,16 @@
+import os
 import sqlite3
 import random
 import sys
 from datetime import date, timedelta
 from pathlib import Path
 
-DB_PATH = Path(__file__).parent.parent / "db" / "sttmount.db"
+if os.getenv("ENV") != "dev":
+    print("拒絕執行：seed.py 只能在 ENV=dev 環境下執行。")
+    print("請用：ENV=dev python3 scripts/seed.py")
+    sys.exit(1)
+
+DB_PATH = Path(__file__).parent.parent / "db" / "sttmount_dev.db"
 
 REGIONS = {
     "台北": ["陽明山", "七星山", "大屯山", "觀音山", "內湖"],
