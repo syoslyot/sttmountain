@@ -90,7 +90,7 @@ def capture_sheet_range(xlsx_path: Path, sheet_name: str, cell_range: str, outpu
         else:
             ws.sheet_properties.pageSetUpPr.fitToPage = True
         ws.page_setup.fitToWidth = 1
-        ws.page_setup.fitToHeight = 0
+        ws.page_setup.fitToHeight = 1
         ws.page_setup.scale = None
         ws.page_margins = PageMargins(left=0.2, right=0.2, top=0.2, bottom=0.2, header=0, footer=0)
         for name in list(wb.sheetnames):
@@ -369,7 +369,7 @@ def normalize(xlsx_path: Path):
         else:
             print("跳過")
 
-        build_a4_preview([p1_path, p2_path], preview_path)
+        build_a4_preview([p1_path], preview_path)
 
     if preview_path.exists():
         rel = f"previews/{exp_id}.png"
