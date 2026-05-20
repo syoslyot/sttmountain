@@ -152,17 +152,18 @@ feature/* ← 每個功能一條分支，從 develop 切出
 hotfix/*  ← 緊急修正，從 main 切出，merge 回 main 和 develop
 ```
 
-日常流程：
+日常流程（Claude 自動執行）：
 ```bash
+# 1. 開發完成後
+git push origin feature/xxx       # push branch 到 remote
+
+# 2. 詢問使用者是否 merge，同意後：
+gh pr merge feature/xxx --merge   # GitHub 上 merge 進 develop
 git checkout develop
-git checkout -b feature/xxx
-# ... 開發、commit ...
-git checkout develop
-git merge --no-ff feature/xxx
-# 穩定後：
-git checkout main
-git merge --no-ff develop
-git push origin main develop
+git pull origin develop           # 立刻同步 local
+# 開 PR: develop → main
+
+# ⚠️ 不可 local git merge 後 push develop — branch protection 會擋住
 ```
 
 ---
