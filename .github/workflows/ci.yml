@@ -41,17 +41,21 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
+      # ── workflow_dispatch: full Drive sync + LibreOffice + normalize ──
       - name: Set up Python
+        if: github.event_name == 'workflow_dispatch'
         uses: actions/setup-python@v5
         with:
           python-version: '3.12'
           cache: 'pip'
 
       - name: Install dependencies
+        if: github.event_name == 'workflow_dispatch'
         run: pip install -r requirements.txt
 
       - name: Check Drive credentials
         id: drive-check
+        if: github.event_name == 'workflow_dispatch'
         run: |
           if [ -n "$GDRIVE_CREDENTIALS_JSON" ]; then
             echo "available=true" >> $GITHUB_OUTPUT
@@ -62,24 +66,35 @@ jobs:
           GDRIVE_CREDENTIALS_JSON: ${{ secrets.GDRIVE_CREDENTIALS_JSON }}
 
       - name: Sync from Google Drive
-        if: steps.drive-check.outputs.available == 'true'
+        if: github.event_name == 'workflow_dispatch' && steps.drive-check.outputs.available == 'true'
         env:
           GDRIVE_CREDENTIALS_JSON: ${{ secrets.GDRIVE_CREDENTIALS_JSON }}
           GDRIVE_ROOT_FOLDER_ID: ${{ secrets.GDRIVE_ROOT_FOLDER_ID }}
         run: python3 scripts/sync_drive.py
 
       - name: Install LibreOffice
-        if: steps.drive-check.outputs.available == 'true'
+        if: github.event_name == 'workflow_dispatch' && steps.drive-check.outputs.available == 'true'
         run: sudo apt-get install -y libreoffice fonts-noto-cjk
 
       - name: Initialize database schema
-        if: steps.drive-check.outputs.available == 'true'
+        if: github.event_name == 'workflow_dispatch' && steps.drive-check.outputs.available == 'true'
         run: python3 -c "from app.models import init_db; init_db()"
 
       - name: Normalize Excel to SQLite
-        if: steps.drive-check.outputs.available == 'true'
+        if: github.event_name == 'workflow_dispatch' && steps.drive-check.outputs.available == 'true'
         run: python3 scripts/normalize.py
 
+      # ── push (code change): reuse DB + static files from previous image ──
+      - name: Extract data from previous image
+        if: github.event_name == 'push'
+        run: |
+          docker pull ${{ env.IMAGE_NAME }}:latest 2>/dev/null || echo "No previous image, skipping extract"
+          docker create --name prev ${{ env.IMAGE_NAME }}:latest 2>/dev/null && \
+            docker cp prev:/app/db/. db/ 2>/dev/null && \
+            docker cp prev:/app/app/static/. app/static/ 2>/dev/null || true
+          docker rm prev 2>/dev/null || true
+
+      # ── shared: build and push ──
       - name: Log in to GHCR
         uses: docker/login-action@v3
         with:
