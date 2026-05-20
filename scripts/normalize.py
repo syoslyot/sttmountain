@@ -10,6 +10,7 @@
 """
 import re
 import sys
+import hashlib
 import subprocess
 import tempfile
 from pathlib import Path
@@ -157,6 +158,18 @@ def build_a4_preview(paths: list[Path], output_path: Path):
     canvas.save(str(output_path))
 
 
+def storage_safe_name(filename: str) -> str:
+    suffix = Path(filename).suffix.lower()
+    try:
+        filename.encode('ascii')
+        safe = re.sub(r'[^\w\-.]', '_', Path(filename).stem, flags=re.ASCII)
+        safe = re.sub(r'_{2,}', '_', safe).strip('_') or 'file'
+        return f"{safe}{suffix}"
+    except UnicodeEncodeError:
+        name_hash = hashlib.sha1(filename.encode()).hexdigest()[:12]
+        return f"{name_hash}{suffix}"
+
+
 def storage_upload(bucket: str, path: str, local_path: Path, content_type: str):
     data = local_path.read_bytes()
     try:
@@ -184,8 +197,9 @@ def scan_static_files(exp_id: int, exp_name: str):
         for f in sorted(gpx_dir.iterdir()):
             if f.suffix.lower() not in GPX_EXTS:
                 continue
-            storage_path = f"{exp_id}/{f.name}"
-            existing = supabase.table("gpx_files").select("id").eq("file_path", storage_path).execute()
+            safe_name    = storage_safe_name(f.name)
+            storage_path = f"{exp_id}/{safe_name}"
+            existing = supabase.table("gpx_files").select("id").eq("expedition_id", exp_id).eq("filename", f.name).execute()
             if not existing.data:
                 supabase.table("gpx_files").insert(
                     {"expedition_id": exp_id, "filename": f.name, "file_path": storage_path}
@@ -197,8 +211,9 @@ def scan_static_files(exp_id: int, exp_name: str):
         for f in sorted(maps_dir.iterdir()):
             if f.suffix.lower() not in MAP_EXTS:
                 continue
-            storage_path = f"{exp_id}/{f.name}"
-            existing = supabase.table("map_files").select("id").eq("file_path", storage_path).execute()
+            safe_name    = storage_safe_name(f.name)
+            storage_path = f"{exp_id}/{safe_name}"
+            existing = supabase.table("map_files").select("id").eq("expedition_id", exp_id).eq("filename", f.name).execute()
             if not existing.data:
                 supabase.table("map_files").insert(
                     {"expedition_id": exp_id, "filename": f.name, "file_path": storage_path}
