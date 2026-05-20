@@ -139,6 +139,12 @@ normalize.py 負責將 Excel 的 "臺北市"、"台北市" 等變體統一對應
 
 ## Git Flow
 
+`main` 和 `develop` 均受 GitHub branch ruleset 保護（設定日期：2025-05-20）：
+- 直接 push 被擋，必須走 PR
+- CI（`CI - Sync, Build, Deploy`）必須通過
+- PR 合入前 branch 必須與目標分支同步
+- force push 被擋
+
 ```
 main      ← 穩定版，只接受來自 develop 或 hotfix/* 的 merge
 develop   ← 日常開發整合，feature/* 都 merge 到這裡

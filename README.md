@@ -231,6 +231,18 @@ Watchtower（部署伺服器）自動偵測新 image → 重啟容器
 
 ---
 
+## 開發流程
+
+`main` 和 `develop` 受 GitHub branch ruleset 保護（設定日期：2025-05-20）：不可直接 push，必須走 PR，CI（`CI - Sync, Build, Deploy`）須通過，force push 被擋。
+
+```
+feature/<desc>  →  develop  →  main
+fix/<desc>      →  develop
+hotfix/<desc>   →  main + develop（緊急修正）
+```
+
+---
+
 ## 本機開發
 
 ```bash
