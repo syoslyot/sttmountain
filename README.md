@@ -128,14 +128,26 @@ pip install -r requirements.txt
 python3 scripts/normalize.py data/raw/xlsx/foo.xlsx
 ```
 
-**環境變數（`.env` 或 GitHub Secrets）：**
+**環境變數與跨系統連線：**
 
-| 變數 | 用途 |
+本專案涉及三個獨立服務互相溝通，每條連線都需要「地址」和「鑰匙」。鑰匙不能寫進程式碼，依執行環境分別存放：
+
+| 從哪裡 | 連到哪裡 | 變數 | 存放位置 |
+|---|---|---|---|
+| GitHub Actions（CI） | Google Drive | `GDRIVE_CREDENTIALS_JSON`、`GDRIVE_ROOT_FOLDER_ID` | GitHub repo → Settings → Secrets |
+| GitHub Actions（CI） | Supabase | `SUPABASE_URL`、`SUPABASE_SERVICE_KEY` | GitHub repo → Settings → Secrets |
+| Render（前端） | Supabase | `SUPABASE_URL`、`SUPABASE_ANON_KEY` | Render Dashboard → Environment Variables |
+| 本機開發 | Supabase | `SUPABASE_URL`、`SUPABASE_SERVICE_KEY` | `.env.local`（不可 commit） |
+
+**Supabase 值的取得位置：** Dashboard → Settings（齒輪）→ API
+
+| 變數 | 對應欄位 |
 |---|---|
-| `SUPABASE_URL` | Supabase project URL |
-| `SUPABASE_SERVICE_KEY` | service_role key（寫入 DB + Storage） |
-| `GDRIVE_CREDENTIALS_JSON` | Google Drive Service Account JSON |
-| `GDRIVE_ROOT_FOLDER_ID` | 「所有出隊資料夾」的 Drive folder ID |
+| `SUPABASE_URL` | Project URL |
+| `SUPABASE_SERVICE_KEY` | Project API keys → `service_role`（不是 anon） |
+| `SUPABASE_ANON_KEY` | Project API keys → `anon` / `public` |
+
+> `service_role` 有完整資料庫權限，只能放在伺服器端，絕不可放進前端程式碼或公開 repo。
 
 ---
 

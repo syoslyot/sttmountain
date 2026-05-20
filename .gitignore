@@ -2,7 +2,8 @@ data/raw/
 __pycache__/
 *.pyc
 .env
-db/sttmountain.db
+.venv/
+db/*.db
 !db/.gitkeep
 app/static/gpx/*
 !app/static/gpx/.gitkeep
