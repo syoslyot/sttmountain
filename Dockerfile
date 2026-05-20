@@ -14,5 +14,11 @@ RUN mkdir -p /app/app/static/gpx /app/app/static/maps /app/db
 COPY db/ ./db/
 RUN python3 -c "from app.models import init_db; init_db()"
 
+COPY entrypoint.sh ./entrypoint.sh
+RUN chmod +x entrypoint.sh
+
 EXPOSE 8000
-CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000"]
+HEALTHCHECK --interval=5s --timeout=3s --retries=10 --start-period=15s \
+  CMD python -c "import socket; s=socket.socket(); s.connect(('localhost',8000)); s.close()"
+
+CMD ["./entrypoint.sh"]
