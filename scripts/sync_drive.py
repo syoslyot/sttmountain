@@ -119,22 +119,21 @@ def sync_map_folder(service, folder_id: str, exp_name: str):
         fid  = item["id"]
         ext  = Path(name).suffix.lower()
         if ext in GPX_EXTS:
-            download_file(service, fid, GPX_DIR / f"{exp_name}_{name}")
+            download_file(service, fid, GPX_DIR / exp_name / name)
         elif ext in PDF_EXTS:
-            download_file(service, fid, MAPS_DIR / f"{exp_name}_{name}")
+            download_file(service, fid, MAPS_DIR / exp_name / name)
 
 
 def sync_record_folder(service, folder_id: str, exp_name: str):
-    TXT_DIR.mkdir(parents=True, exist_ok=True)
     for item in list_folder(service, folder_id):
         name = item["name"]
         fid  = item["id"]
         mime = item["mimeType"]
         ext  = Path(name).suffix.lower()
         if mime == GDOC_MIME:
-            download_google_doc(service, fid, TXT_DIR / f"{exp_name}_{name}.txt")
+            download_google_doc(service, fid, TXT_DIR / exp_name / f"{name}.txt")
         elif ext in DOCX_EXTS or ext in RECORD_EXTS:
-            download_file(service, fid, TXT_DIR / f"{exp_name}_{name}")
+            download_file(service, fid, TXT_DIR / exp_name / name)
 
 
 def main():
