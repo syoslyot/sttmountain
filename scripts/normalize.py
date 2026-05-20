@@ -90,7 +90,7 @@ def capture_sheet_range(xlsx_path: Path, sheet_name: str, cell_range: str, outpu
         else:
             ws.sheet_properties.pageSetUpPr.fitToPage = True
         ws.page_setup.fitToWidth = 1
-        ws.page_setup.fitToHeight = 0
+        ws.page_setup.fitToHeight = 1
         ws.page_setup.scale = None
         ws.page_margins = PageMargins(left=0.2, right=0.2, top=0.2, bottom=0.2, header=0, footer=0)
         for name in list(wb.sheetnames):
@@ -151,58 +151,68 @@ def build_a4_preview(paths: list[Path], output_path: Path):
 
 
 def scan_static_files(exp_id: int, exp_name: str, conn: sqlite3.Connection):
-    prefix = exp_name + "_"
+    def resolve_dir(base: Path) -> Path | None:
+        by_id   = base / str(exp_id)
+        by_name = base / exp_name
+        if by_id.is_dir():
+            return by_id
+        if by_name.is_dir():
+            by_name.rename(by_id)
+            return by_id
+        return None
 
-    for src in sorted(GPX_DIR.iterdir()):
-        if src.name == ".gitkeep" or src.suffix.lower() not in GPX_EXTS:
-            continue
-        if not src.name.startswith(prefix):
-            continue
-        if not conn.execute("SELECT 1 FROM gpx_files WHERE file_path=?", (src.name,)).fetchone():
+    gpx_dir = resolve_dir(GPX_DIR)
+    if gpx_dir:
+        for f in sorted(gpx_dir.iterdir()):
+            if f.suffix.lower() not in GPX_EXTS:
+                continue
+            rel = f"{exp_id}/{f.name}"
+            if not conn.execute("SELECT 1 FROM gpx_files WHERE file_path=?", (rel,)).fetchone():
+                conn.execute(
+                    "INSERT INTO gpx_files(expedition_id, file_path) VALUES (?,?)",
+                    (exp_id, rel),
+                )
+
+    maps_dir = resolve_dir(STATIC_MAPS)
+    if maps_dir:
+        for f in sorted(maps_dir.iterdir()):
+            if f.suffix.lower() not in MAP_EXTS:
+                continue
+            rel = f"{exp_id}/{f.name}"
+            if not conn.execute("SELECT 1 FROM map_files WHERE file_path=?", (rel,)).fetchone():
+                conn.execute(
+                    "INSERT INTO map_files(expedition_id, file_path) VALUES (?,?)",
+                    (exp_id, rel),
+                )
+
+    txt_dir = resolve_dir(TXT_DIR)
+    if txt_dir:
+        for f in sorted(txt_dir.iterdir()):
+            if f.suffix.lower() not in RECORD_EXTS:
+                continue
+            if conn.execute("SELECT 1 FROM records WHERE expedition_id=? AND filename=?", (exp_id, f.name)).fetchone():
+                continue
+            ext = f.suffix.lower()
+            if ext == ".docx":
+                from docx import Document
+                doc = Document(f)
+                parts = [p.text for p in doc.paragraphs if p.text.strip()]
+                for table in doc.tables:
+                    for row in table.rows:
+                        row_text = "  ".join(c.text.strip() for c in row.cells if c.text.strip())
+                        if row_text:
+                            parts.append(row_text)
+                content = "\n".join(parts)
+            elif ext == ".pdf":
+                doc = fitz.open(str(f))
+                content = "\n".join(page.get_text() for page in doc)
+                doc.close()
+            else:
+                content = f.read_text(encoding="utf-8", errors="replace")
             conn.execute(
-                "INSERT INTO gpx_files(expedition_id, filename, file_path) VALUES (?,?,?)",
-                (exp_id, src.name, src.name),
+                "INSERT INTO records(expedition_id, filename, content) VALUES (?,?,?)",
+                (exp_id, f.name, content),
             )
-
-    for src in sorted(STATIC_MAPS.iterdir()):
-        if src.name == ".gitkeep" or src.suffix.lower() not in MAP_EXTS:
-            continue
-        if not src.name.startswith(prefix):
-            continue
-        if not conn.execute("SELECT 1 FROM map_files WHERE file_path=?", (src.name,)).fetchone():
-            conn.execute(
-                "INSERT INTO map_files(expedition_id, filename, file_path) VALUES (?,?,?)",
-                (exp_id, src.name, src.name),
-            )
-
-    for src in sorted(TXT_DIR.iterdir()):
-        if src.name == ".gitkeep" or src.suffix.lower() not in RECORD_EXTS:
-            continue
-        if not src.name.startswith(prefix):
-            continue
-        if conn.execute("SELECT 1 FROM records WHERE filename=?", (src.name,)).fetchone():
-            continue
-        ext = src.suffix.lower()
-        if ext == ".docx":
-            from docx import Document
-            doc = Document(src)
-            parts = [p.text for p in doc.paragraphs if p.text.strip()]
-            for table in doc.tables:
-                for row in table.rows:
-                    row_text = "  ".join(c.text.strip() for c in row.cells if c.text.strip())
-                    if row_text:
-                        parts.append(row_text)
-            content = "\n".join(parts)
-        elif ext == ".pdf":
-            doc = fitz.open(str(src))
-            content = "\n".join(page.get_text() for page in doc)
-            doc.close()
-        else:
-            content = src.read_text(encoding="utf-8", errors="replace")
-        conn.execute(
-            "INSERT INTO records(expedition_id, filename, content) VALUES (?,?,?)",
-            (exp_id, src.name, content),
-        )
 
     conn.commit()
     print(f"    靜態檔案已掃描")
@@ -359,7 +369,7 @@ def normalize(xlsx_path: Path):
         else:
             print("跳過")
 
-        build_a4_preview([p1_path, p2_path], preview_path)
+        build_a4_preview([p1_path], preview_path)
 
     if preview_path.exists():
         rel = f"previews/{exp_id}.png"
