@@ -57,7 +57,7 @@ def list_folder(service, folder_id: str) -> list[dict]:
     while True:
         resp = service.files().list(
             q=f"'{folder_id}' in parents and trashed=false",
-            fields="nextPageToken, files(id, name, mimeType)",
+            fields="nextPageToken, files(id, name, mimeType, modifiedTime)",
             pageToken=page_token,
         ).execute()
         results.extend(resp.get("files", []))
@@ -67,9 +67,21 @@ def list_folder(service, folder_id: str) -> list[dict]:
     return results
 
 
-def download_file(service, file_id: str, dest: Path):
+def _drive_newer(modified_time: str | None, dest: Path) -> bool:
+    """Return True if Drive file is newer than local file (or local doesn't exist)."""
+    if not dest.exists():
+        return True
+    if not modified_time:
+        return False
+    from datetime import datetime, timezone
+    drive_mtime = datetime.fromisoformat(modified_time.replace("Z", "+00:00"))
+    local_mtime = datetime.fromtimestamp(dest.stat().st_mtime, tz=timezone.utc)
+    return drive_mtime > local_mtime
+
+
+def download_file(service, file_id: str, dest: Path, modified_time: str | None = None):
     dest.parent.mkdir(parents=True, exist_ok=True)
-    if dest.exists():
+    if not _drive_newer(modified_time, dest):
         return
     request = service.files().get_media(fileId=file_id)
     with io.FileIO(dest, "wb") as fh:
@@ -80,9 +92,9 @@ def download_file(service, file_id: str, dest: Path):
     print(f"  downloaded: {dest}")
 
 
-def download_google_doc(service, file_id: str, dest: Path):
+def download_google_doc(service, file_id: str, dest: Path, modified_time: str | None = None):
     dest.parent.mkdir(parents=True, exist_ok=True)
-    if dest.exists():
+    if not _drive_newer(modified_time, dest):
         return
     request = service.files().export_media(fileId=file_id, mimeType="text/plain")
     with io.FileIO(dest, "wb") as fh:
@@ -110,7 +122,7 @@ def sync_expedition(service, exp_folder_id: str, exp_name: str):
             elif name_low in {n.lower() for n in REC_SUBFOLDER_NAMES}:
                 sync_record_folder(service, fid, exp_name)
         elif ext in EXCEL_EXTS:
-            download_file(service, fid, XLSX_STAGING / f"{exp_name}_{name}")
+            download_file(service, fid, XLSX_STAGING / f"{exp_name}_{name}", item.get("modifiedTime"))
 
 
 def sync_map_folder(service, folder_id: str, exp_name: str):
@@ -119,9 +131,9 @@ def sync_map_folder(service, folder_id: str, exp_name: str):
         fid  = item["id"]
         ext  = Path(name).suffix.lower()
         if ext in GPX_EXTS:
-            download_file(service, fid, GPX_DIR / exp_name / name)
+            download_file(service, fid, GPX_DIR / exp_name / name, item.get("modifiedTime"))
         elif ext in PDF_EXTS:
-            download_file(service, fid, MAPS_DIR / exp_name / name)
+            download_file(service, fid, MAPS_DIR / exp_name / name, item.get("modifiedTime"))
 
 
 def sync_record_folder(service, folder_id: str, exp_name: str):
@@ -131,9 +143,9 @@ def sync_record_folder(service, folder_id: str, exp_name: str):
         mime = item["mimeType"]
         ext  = Path(name).suffix.lower()
         if mime == GDOC_MIME:
-            download_google_doc(service, fid, TXT_DIR / exp_name / f"{name}.txt")
+            download_google_doc(service, fid, TXT_DIR / exp_name / f"{name}.txt", item.get("modifiedTime"))
         elif ext in DOCX_EXTS or ext in RECORD_EXTS:
-            download_file(service, fid, TXT_DIR / exp_name / name)
+            download_file(service, fid, TXT_DIR / exp_name / name, item.get("modifiedTime"))
 
 
 def main():
