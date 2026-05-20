@@ -204,6 +204,18 @@ expedition_counties expedition_id, county              （入山＋出山各一�
 
 ## CI/CD 自動化流程
 
+### PR 驗證（`pull_request: main`）
+
+每個 PR 到 `main` 都會自動跑以下驗證，全部通過才能 merge：
+
+| 驗證 | 指令 | 抓什麼問題 |
+|------|------|-----------|
+| Python import 檢查 | `python -c "from app.main import app"` | 語法錯誤、循環 import、缺少套件 |
+
+> 未來可新增的驗證：`pytest` 功能測試、`ruff` / `flake8` 程式碼風格檢查
+
+### 部署流程（`push: main`）
+
 ```
 每日定時觸發（或手動）
   ↓
@@ -216,6 +228,8 @@ Build Docker image（含更新後的 DB 和靜態檔案）
 Push to GHCR
   ↓
 Watchtower（部署伺服器）自動偵測新 image → 重啟容器
+  ↓
+觸發 sttmountaincrazy rebuild（workflow_dispatch）
 ```
 
 **環境變數（GitHub Actions Secrets）：**
