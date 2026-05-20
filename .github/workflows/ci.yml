@@ -1,18 +1,17 @@
-name: CI - Sync, Build, Deploy
+name: CI - Data Sync
 
 on:
-  push:
-    branches: [main]
+  schedule:
+    - cron: '0 20 * * *'   # 每天 UTC 20:00（台灣時間凌晨 4:00）
+  workflow_dispatch:        # 手動觸發
   pull_request:
     branches: [main]
-  workflow_dispatch:
-
-env:
-  IMAGE_NAME: ghcr.io/syoslyot/sttmountain
 
 jobs:
+  # PR 驗證：確認 Python 語法正確
   import-check:
     runs-on: ubuntu-latest
+    if: github.event_name == 'pull_request'
     steps:
       - uses: actions/checkout@v4
 
@@ -27,87 +26,32 @@ jobs:
       - name: Python import check
         run: python -c "from app.main import app; print('Import OK')"
 
-  build-and-push:
+  # 資料同步：每日排程 or 手動觸發
+  sync-and-normalize:
     runs-on: ubuntu-latest
-    needs: import-check
-    if: github.event_name != 'pull_request'
-    permissions:
-      contents: read
-      packages: write
-    env:
-      FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
-
+    if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
     steps:
-      - name: Checkout
-        uses: actions/checkout@v4
+      - uses: actions/checkout@v4
 
-      # ── workflow_dispatch: full Drive sync + LibreOffice + normalize ──
-      - name: Set up Python
-        if: github.event_name == 'workflow_dispatch'
-        uses: actions/setup-python@v5
+      - uses: actions/setup-python@v5
         with:
           python-version: '3.12'
           cache: 'pip'
 
-      - name: Install dependencies
-        if: github.event_name == 'workflow_dispatch'
+      - name: Install Python dependencies
         run: pip install -r requirements.txt
 
-      - name: Check Drive credentials
-        id: drive-check
-        if: github.event_name == 'workflow_dispatch'
-        run: |
-          if [ -n "$GDRIVE_CREDENTIALS_JSON" ]; then
-            echo "available=true" >> $GITHUB_OUTPUT
-          else
-            echo "available=false" >> $GITHUB_OUTPUT
-          fi
-        env:
-          GDRIVE_CREDENTIALS_JSON: ${{ secrets.GDRIVE_CREDENTIALS_JSON }}
+      - name: Install LibreOffice + CJK fonts
+        run: sudo apt-get install -y libreoffice fonts-noto-cjk
 
       - name: Sync from Google Drive
-        if: github.event_name == 'workflow_dispatch' && steps.drive-check.outputs.available == 'true'
         env:
           GDRIVE_CREDENTIALS_JSON: ${{ secrets.GDRIVE_CREDENTIALS_JSON }}
           GDRIVE_ROOT_FOLDER_ID: ${{ secrets.GDRIVE_ROOT_FOLDER_ID }}
         run: python3 scripts/sync_drive.py
 
-      - name: Install LibreOffice
-        if: github.event_name == 'workflow_dispatch' && steps.drive-check.outputs.available == 'true'
-        run: sudo apt-get install -y libreoffice fonts-noto-cjk
-
-      - name: Initialize database schema
-        if: github.event_name == 'workflow_dispatch' && steps.drive-check.outputs.available == 'true'
-        run: python3 -c "from app.models import init_db; init_db()"
-
-      - name: Normalize Excel to SQLite
-        if: github.event_name == 'workflow_dispatch' && steps.drive-check.outputs.available == 'true'
+      - name: Normalize and upload to Supabase
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_KEY: ${{ secrets.SUPABASE_SERVICE_KEY }}
         run: python3 scripts/normalize.py
-
-      # ── push (code change): reuse DB + static files from previous image ──
-      - name: Extract data from previous image
-        if: github.event_name == 'push'
-        run: |
-          docker pull ${{ env.IMAGE_NAME }}:latest 2>/dev/null || echo "No previous image, skipping extract"
-          docker create --name prev ${{ env.IMAGE_NAME }}:latest 2>/dev/null && \
-            docker cp prev:/app/db/. db/ 2>/dev/null && \
-            docker cp prev:/app/app/static/. app/static/ 2>/dev/null || true
-          docker rm prev 2>/dev/null || true
-
-      # ── shared: build and push ──
-      - name: Log in to GHCR
-        uses: docker/login-action@v3
-        with:
-          registry: ghcr.io
-          username: ${{ github.actor }}
-          password: ${{ secrets.GITHUB_TOKEN }}
-
-      - name: Build and push Docker image
-        uses: docker/build-push-action@v6
-        with:
-          context: .
-          push: true
-          tags: ${{ env.IMAGE_NAME }}:latest
-
-      # sttmountaincrazy no longer needs a rebuild on data change —
-      # it reads DB and static files from the shared Docker volume at runtime.
