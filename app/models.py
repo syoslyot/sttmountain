@@ -1,7 +1,8 @@
+import os
 import sqlite3
 from pathlib import Path
 
-DB_PATH = Path(__file__).parent.parent / "db" / "sttmount.db"
+DB_PATH = Path(__file__).parent.parent / "db" / "sttmountain.db"
 
 SCHEMA = """
 PRAGMA foreign_keys = ON;
@@ -23,16 +24,28 @@ CREATE TABLE IF NOT EXISTS expeditions (
 CREATE INDEX IF NOT EXISTS idx_exp_county ON expeditions(county);
 CREATE INDEX IF NOT EXISTS idx_exp_date   ON expeditions(date_start);
 
+CREATE TABLE IF NOT EXISTS members (
+    id            INTEGER PRIMARY KEY AUTOINCREMENT,
+    expedition_id INTEGER NOT NULL REFERENCES expeditions(id) ON DELETE CASCADE,
+    name          TEXT NOT NULL,
+    role          TEXT,
+    department    TEXT,
+    experience    TEXT
+);
+
 CREATE TABLE IF NOT EXISTS gpx_files (
     id            INTEGER PRIMARY KEY AUTOINCREMENT,
     expedition_id INTEGER NOT NULL REFERENCES expeditions(id) ON DELETE CASCADE,
+    filename      TEXT NOT NULL,
     file_path     TEXT NOT NULL UNIQUE
 );
 
 CREATE TABLE IF NOT EXISTS map_files (
     id            INTEGER PRIMARY KEY AUTOINCREMENT,
     expedition_id INTEGER NOT NULL REFERENCES expeditions(id) ON DELETE CASCADE,
-    file_path     TEXT NOT NULL UNIQUE
+    filename      TEXT NOT NULL,
+    file_path     TEXT NOT NULL UNIQUE,
+    file_type     TEXT NOT NULL DEFAULT 'pdf'
 );
 
 CREATE TABLE IF NOT EXISTS records (
@@ -68,6 +81,15 @@ def init_db():
             conn.execute("ALTER TABLE expeditions ADD COLUMN region_exit TEXT")
         except sqlite3.OperationalError:
             pass
+        for stmt in [
+            "ALTER TABLE gpx_files ADD COLUMN filename TEXT NOT NULL DEFAULT ''",
+            "ALTER TABLE map_files ADD COLUMN filename TEXT NOT NULL DEFAULT ''",
+            "ALTER TABLE map_files ADD COLUMN file_type TEXT NOT NULL DEFAULT 'pdf'",
+        ]:
+            try:
+                conn.execute(stmt)
+            except sqlite3.OperationalError:
+                pass
         conn.execute("""
             INSERT OR IGNORE INTO expedition_counties(expedition_id, county)
             SELECT id, county FROM expeditions WHERE county IS NOT NULL
