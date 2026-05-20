@@ -281,14 +281,26 @@ def parse_p2(ws):
     return description, members
 
 
+P1_NAMES = ["直企P1(列印)", "直企列印 P1"]
+P2_NAMES = ["直企P2(列印)", "直企列印 P2"]
+
+
+def find_sheet(wb, candidates: list[str]) -> str | None:
+    for name in candidates:
+        if name in wb.sheetnames:
+            return name
+    return None
+
+
 def normalize(xlsx_path: Path):
     wb = openpyxl.load_workbook(xlsx_path, data_only=True)
 
-    if "直企P1(列印)" not in wb.sheetnames:
-        print(f"  ⚠ 找不到「直企P1(列印)」sheet，跳過 {xlsx_path.name}")
+    p1_name = find_sheet(wb, P1_NAMES)
+    if not p1_name:
+        print(f"  ⚠ 找不到 P1 sheet，跳過 {xlsx_path.name}")
         return
 
-    ws_p1 = wb["直企P1(列印)"]
+    ws_p1 = wb[p1_name]
     name, date_start, date_end, county, region, county_exit, region_exit = parse_p1(ws_p1)
 
     if not name:
@@ -299,10 +311,11 @@ def normalize(xlsx_path: Path):
         return
 
     description, members = None, []
-    if "直企P2(列印)" in wb.sheetnames:
-        description, members = parse_p2(wb["直企P2(列印)"])
+    p2_name = find_sheet(wb, P2_NAMES)
+    if p2_name:
+        description, members = parse_p2(wb[p2_name])
     else:
-        print(f"  ⚠ 找不到「直企P2(列印)」sheet，隊員與留守資料略過")
+        print(f"  ⚠ 找不到 P2 sheet，隊員與留守資料略過")
 
     existing = supabase.table("expeditions").select("id").eq("name", name).eq("date_start", date_start).execute()
     if existing.data:
@@ -354,8 +367,8 @@ def normalize(xlsx_path: Path):
         p1_path = _tmp / "p1.png"
 
         print(f"    截圖 P1...", end=" ", flush=True)
-        if "直企P1(列印)" in wb.sheetnames:
-            capture_sheet_range(xlsx_path, "直企P1(列印)", "A2:G27", p1_path)
+        if p1_name:
+            capture_sheet_range(xlsx_path, p1_name, "A2:G27", p1_path)
             print("完成" if p1_path.exists() else "失敗")
         else:
             print("跳過")

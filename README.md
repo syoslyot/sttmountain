@@ -9,14 +9,14 @@ NCKU 山協出隊資料展示平台。幹部照舊把資料上傳至 Google Driv
 | 層級 | 選擇 |
 |---|---|
 | Backend | Python 3.12 + FastAPI + Jinja2（SSR） |
-| Database | SQLite |
+| Database | Supabase（PostgreSQL + Storage） |
 | Frontend | HTML + Tailwind CSS（CDN）+ Vanilla JS |
 | 地圖 | Leaflet.js + leaflet-omnivore（GPX/KML）|
 | 地圖底圖 | NLSC 通用電子地圖 / OpenTopoMap / OSM / NLSC 正射影像 + 等高線 overlay |
 | 高度剖面 | @raruto/leaflet-elevation |
 | 部署 | Docker Compose + Nginx |
 | 自動更新 | Watchtower（監聽 GHCR，自動 pull 新 image） |
-| CI/CD | GitHub Actions（每日同步 Drive → build image → push GHCR） |
+| CI/CD | GitHub Actions（每日同步 Drive → normalize → push Supabase） |
 
 ---
 
@@ -38,7 +38,7 @@ NCKU 山協出隊資料展示平台。幹部照舊把資料上傳至 Google Driv
 ```
 
 **注意：**
-- xlsx 需包含「直企P1(列印)」與「直企P2(列印)」兩個 sheet
+- xlsx 需包含 `直企P1(列印)` 或 `直企列印 P1` sheet（兩種命名均支援）
 - 每日 CI 自動同步，上傳後隔日生效；也可手動觸發 GitHub Actions
 
 ---
@@ -75,130 +75,97 @@ python3 scripts/normalize.py data/raw/xlsx/foo.xlsx  # 指定檔案
 ```
 讀取 xlsx
   ↓
-解析 直企P1(列印) sheet
+解析 P1 sheet（直企P1(列印) 或 直企列印 P1）
   → 出隊名稱、出發日、回程日、入山地點（縣市＋鄉鎮）、出山地點（縣市＋鄉鎮）
   ↓
-解析 直企P2(列印) sheet
-  → 留守資料（M/N 欄）、Garmin 追蹤連結、注意事項 → 合為 description
-  → 領隊姓名 → expeditions.leader
+解析 P2 sheet（直企P2(列印) 或 直企列印 P2）
+  → 留守資料（M/N 欄）→ description
   ↓
-查詢 DB：是否已存在同名＋同日期的出隊？
+查詢 Supabase：是否已存在同名＋同日期的出隊？
   ├─ 已存在 → 補掃靜態檔案後結束
-  └─ 不存在 → INSERT expeditions + expedition_counties
-              ↓
-              rename xlsx：{出隊名}_{drive_filename}.xlsx → {id}_{drive_filename}.xlsx
+  └─ 不存在 → INSERT expeditions + expedition_counties + members
               ↓
               scan_static_files
               ↓
-              生成截圖預覽（P1 + P2 合併為 A4 PNG）
+              生成截圖預覽（P1 PNG）→ 上傳 Storage previews bucket
               ↓
-              UPDATE expeditions SET preview_image
+              UPDATE expeditions SET preview_image = '{id}.png'
 ```
 
 **scan_static_files 行為：**
 
-以 P1 解析出的出隊名稱（`name`）為前綴，glob 掃描各目錄，將 `{出隊名}_{original}` 改名為 `{id}_{original}` 並寫入 DB：
-
-| 資源 | 來源（glob） | 目的地 | DB 寫入 |
+| 資源 | 本地來源 | Supabase Storage | DB 寫入 |
 |---|---|---|---|
-| GPX / KML | `app/static/gpx/{出隊名}_*` | `app/static/gpx/{id}_{original}` | `gpx_files` |
-| PDF | `app/static/maps/{出隊名}_*` | `app/static/maps/{id}_{original}` | `map_files` |
-| txt / md / docx | `data/raw/txt/{出隊名}_*`（扁平） | `data/raw/txt/{id}_{original}` | `records`（逐檔 INSERT） |
+| GPX / KML | `app/static/gpx/{id}/` | `gpx` bucket，路徑 `{id}/{filename}` | `gpx_files` |
+| PDF | `app/static/maps/{id}/` | `maps` bucket，路徑 `{id}/{filename}` | `map_files` |
+| txt / md / docx | `data/raw/txt/{id}/` | 不上傳（內容存 DB） | `records.content` |
 
 每種資源均支援多檔；`.docx` 透過 `python-docx` 提取純文字後存入 `records.content`。
 
 **重複執行（idempotency）：**
-- 目標路徑已存在 → 略過 rename
-- `INSERT OR IGNORE` 保護不重複寫 DB
-- records 以 `(expedition_id, filename)` 查 DB，已存在則跳過
+- 查詢 Supabase 確認已存在 → 跳過
+- Storage 上傳使用 `upsert: true`，覆蓋舊檔不報錯
 
 ---
 
 ### 截圖生成邏輯
 
 1. 擷取 P1 範圍（`A2:G27`）→ LibreOffice 轉 PDF → PyMuPDF 轉 PNG（2× 解析度）
-2. 擷取 P2 範圍（`B2:O11`）→ 同上
-3. `trim_whitespace()`：裁切空白邊框，保留 15px padding
-4. `build_a4_preview()`：目標寬 1240px，兩張垂直排列（16px gap），超過 A4 高度等比縮小
-5. 輸出：`app/static/previews/{id}.png`
+2. `trim_whitespace()`：裁切空白邊框，保留 15px padding
+3. `build_a4_preview()`：目標寬 1240px，超過 A4 高度等比縮小
+4. 輸出 PNG → 上傳 Supabase Storage `previews/{id}.png`
 
 ---
 
-## 網頁 UX 流程
+## 本機開發
 
-### 首頁（`/`）
+```bash
+# 複製環境變數範本
+cp .env.example .env
+# 填入 SUPABASE_URL 和 SUPABASE_SERVICE_KEY
 
-**版面：** 左右分割，各佔 50% 視窗高度，獨立捲動。
+pip install -r requirements.txt
+python3 scripts/normalize.py data/raw/xlsx/foo.xlsx
+```
 
-#### 左半：篩選區（三種模式）
+**環境變數（`.env` 或 GitHub Secrets）：**
 
-| 模式 | Tab | 行為 |
-|---|---|---|
-| 地區 | 地圖圖示 | 台灣縣市格狀地圖，點選縣市 |
-| 日期 | 日曆圖示 | 快速預設（1個月／半年／1年／3年）＋自訂日期區間 |
-| 關鍵字 | 搜尋圖示 | 即時搜尋（300ms debounce），清空自動恢復預設列表 |
-
-切換 Tab 時，若離開地區模式，縣市格選取狀態自動清除。
-
-#### 右半：結果列表
-
-- 初始：`/fragment/recent`，以結束日期排序（最近的在上方）
-- 每頁 20 筆，捲動到底部 200px 前自動載入下一頁（Infinite Scroll）
-
-| 觸發 | Fragment API |
+| 變數 | 用途 |
 |---|---|
-| 點選縣市 | `GET /fragment/county/{name}` |
-| 日期變更 | `GET /fragment/date?date_from=&date_to=` |
-| 關鍵字輸入 | `GET /fragment/search?q=` |
-| 關鍵字清空 | `GET /fragment/recent` |
-
-所有端點共用 `?offset=N` 參數（LIMIT 21，多一筆用於判斷是否有下一頁）。
-
-日期模式：頁面載入時預設為今天；`date-from` 或 `date-to` 任一空白不觸發查詢。
+| `SUPABASE_URL` | Supabase project URL |
+| `SUPABASE_SERVICE_KEY` | service_role key（寫入 DB + Storage） |
+| `GDRIVE_CREDENTIALS_JSON` | Google Drive Service Account JSON |
+| `GDRIVE_ROOT_FOLDER_ID` | 「所有出隊資料夾」的 Drive folder ID |
 
 ---
 
-### 出隊詳細頁（`/expedition/{id}`）
-
-**版面：** 左地圖右資訊，各自獨立捲動。
-
-#### 左半：互動地圖
-
-- 預設底圖：NLSC 通用電子地圖
-- 可切換：OpenTopoMap、OpenStreetMap、NLSC 正射影像
-- 可疊加 overlay：NLSC 等高線
-- 初始中心：依 `county` 對應縣市座標；無縣市資料則顯示台灣全島（zoom 8）
-- 有 GPX：底部固定 140px 高度剖面圖，懸停游標對應地圖位置
-- 有 KML：omnivore 載入，自動 fitBounds
-
-#### 右半：出隊資訊（由上至下）
-
-1. **截圖預覽**（P1 + P2 合併圖）— 有才顯示
-2. **紀錄文章**（每份 txt/docx 各一個 `<details>`，預設**展開**）— 有才顯示；`<pre>` 保留原始格式
-
-#### Navbar 下載按鈕
-
-- 有 GPX → 顯示 GPX 下載按鈕，按鈕文字為 DB 中的實際檔名（如 `210_水山霞山_薰慈.gpx`）
-- 有 PDF → 顯示 PDF 下載按鈕，按鈕文字為 DB 中的實際檔名
-- 兩者皆無 → 不顯示任何下載元素
-
----
-
-## DB Schema
+## DB Schema（Supabase PostgreSQL）
 
 ```
 expeditions         id, name, date_start, date_end, county, region, region_exit,
                     leader, description, preview_image, created_at
-gpx_files           id, expedition_id, file_path       （如 "210_水山霞山_薰慈.gpx"）
-map_files           id, expedition_id, file_path       （如 "209_茶茶牙頓出西都驕溪.pdf"）
+gpx_files           id, expedition_id, filename, file_path   （如 "203/route.gpx"）
+map_files           id, expedition_id, filename, file_path   （如 "203/map.pdf"）
 records             id, expedition_id, filename, content
-expedition_counties expedition_id, county              （入山＋出山各一筆，UNIQUE）
+expedition_counties id, expedition_id, county                 （入山＋出山各一筆，UNIQUE）
+members             id, expedition_id, name, role, department, experience
 ```
 
 **縣市正規化規則：** 一律存 17 個顯示簡稱（「台北」「南投」等）。
-`normalize.py` 負責將 Excel 的官方名稱（「臺北市」「台北市」「南投縣」）統一轉換。
 
-所有子表設 `ON DELETE CASCADE`，刪除出隊資料時自動清除關聯紀錄。
+**Storage Buckets（Public）：**
+
+| Bucket | 路徑格式 | 存放內容 |
+|---|---|---|
+| `gpx` | `{id}/{filename}` | GPX / KML 軌跡檔 |
+| `maps` | `{id}/{filename}` | 地圖 PDF |
+| `previews` | `{id}.png` | 出隊計畫書預覽圖 |
+
+**RLS：** 所有 table 啟用，`anon` 只能 SELECT，`service_role` 有完整寫入權限。
+
+**RPC 函式：**
+- `list_expeditions(p_q, p_county, p_counties[], p_start, p_end, p_page, p_page_size)` → `{expeditions, total, page, pageSize}`
+- `get_expedition_dates()` → `{min_date, max_date}`
 
 ---
 
@@ -206,48 +173,29 @@ expedition_counties expedition_id, county              （入山＋出山各一�
 
 ### PR 驗證（`pull_request: main`）
 
-每個 PR 到 `main` 都會自動跑以下驗證，全部通過才能 merge：
-
 | 驗證 | 指令 | 抓什麼問題 |
 |------|------|-----------|
 | Python import 檢查 | `python -c "from app.main import app"` | 語法錯誤、循環 import、缺少套件 |
 
-> 未來可新增的驗證：`pytest` 功能測試、`ruff` / `flake8` 程式碼風格檢查
-
-### 部署流程（`push: main`）
+### 部署流程（每日定時觸發）
 
 ```
-每日定時觸發（或手動）
-  ↓
 sync_drive.py   ← 從 Google Drive 下載新資料
   ↓
-normalize.py    ← 解析 xlsx → 寫入 DB → 改名靜態檔 → 生成截圖
+normalize.py    ← 解析 xlsx → 寫入 Supabase DB → 上傳 Storage → 生成截圖
   ↓
-Build Docker image（含更新後的 DB 和靜態檔案）
+Build Docker image（純 app 程式碼，不含資料）
   ↓
 Push to GHCR
   ↓
-Watchtower（部署伺服器）自動偵測新 image → 重啟容器
-  ↓
-觸發 sttmountaincrazy rebuild（workflow_dispatch）
+Watchtower 自動偵測新 image → 重啟容器
 ```
-
-**環境變數（GitHub Actions Secrets）：**
-- `GDRIVE_CREDENTIALS_JSON` — Service Account JSON
-- `GDRIVE_ROOT_FOLDER_ID` — 「所有出隊資料夾」的 Drive folder ID
-
----
-
-## 待辦事項
-
-- [ ] 出隊詳細頁：多 GPX 檔選擇（目前全部同時載入，需加選擇 UI）
-- [ ] 出隊詳細頁：多筆紀錄文章選擇（目前全部展開，需加選擇 UI）
 
 ---
 
 ## 開發流程
 
-`main` 和 `develop` 受 GitHub branch ruleset 保護（設定日期：2025-05-20）：不可直接 push，必須走 PR，CI（`CI - Sync, Build, Deploy`）須通過，force push 被擋。
+`main` 和 `develop` 受 GitHub branch ruleset 保護（設定日期：2025-05-20）：不可直接 push，必須走 PR，CI 須通過，force push 被擋。
 
 ```
 feature/<desc>  →  develop  →  main
@@ -257,14 +205,7 @@ hotfix/<desc>   →  main + develop（緊急修正）
 
 ---
 
-## 本機開發
+## 待辦事項
 
-```bash
-python3 -m venv .venv && source .venv/bin/activate
-pip install -r requirements.txt
-python3 -c "from app.models import init_db; init_db()"
-python3 scripts/seed.py      # 插入假資料
-python3 scripts/gen_gpx.py   # 產生假 GPX 軌跡檔
-uvicorn app.main:app --reload
-# 開啟 http://localhost:8000
-```
+- [ ] 出隊詳細頁：多 GPX 檔選擇（目前全部同時載入）
+- [ ] 出隊詳細頁：多筆紀錄文章選擇（目前全部展開）
