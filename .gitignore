@@ -12,5 +12,6 @@ app/static/maps/*
 !app/static/maps/.gitkeep
 app/static/previews/*
 !app/static/previews/.gitkeep
+CLAUDE.md
 .claude/
 .playwright-mcp/
