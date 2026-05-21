@@ -115,6 +115,7 @@ create or replace function list_expeditions(
 )
 returns json
 language plpgsql
+security definer
 as $$
 declare
   v_offset   int    := (p_page - 1) * p_page_size;
@@ -173,6 +174,7 @@ $$;
 create or replace function get_expedition_dates()
 returns json
 language sql
+security definer
 as $$
   select json_build_object(
     'min_date', min(date_start),
@@ -180,3 +182,6 @@ as $$
   )
   from expeditions;
 $$;
+
+grant execute on function list_expeditions(text, text, text[], date, date, integer, integer) to anon;
+grant execute on function get_expedition_dates() to anon;
