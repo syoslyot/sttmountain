@@ -5,6 +5,8 @@ services:
     restart: unless-stopped
     volumes:
       - sttdata:/data
+    env_file:
+      - .env
     environment:
       - ENV=prod
 
