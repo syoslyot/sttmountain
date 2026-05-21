@@ -43,77 +43,83 @@ NCKU 山協出隊資料展示平台。幹部照舊把資料上傳至 Google Driv
 
 ---
 
-## 資料流程（Data Ingestion）
+## 完整同步流程（按下 Run workflow 後發生的事）
 
-### Google Drive 同步（`scripts/sync_drive.py`）
+### Step 1：CI 機器環境準備
 
-每日透過 Service Account 讀取 Drive，下載至本機：
+GitHub 開一台全新 Ubuntu 機器，clone repo，安裝：
+- Python 套件（`pip install -r requirements.txt`）
+- LibreOffice headless — 截圖用，把 xlsx 轉成 PDF
+- `fonts-noto-cjk` — 中文字型，不裝的話截圖會出現亂碼方塊
 
-| 類型 | 下載至 |
+---
+
+### Step 2：`scripts/sync_drive.py`
+
+用 Service Account JSON 向 Google Drive 認證，列出「所有出隊資料夾」根目錄下每個子資料夾（每個子資料夾 = 一次出隊），對每次出隊分三類下載：
+
+**xlsx（直企）**
+比對 Drive 回傳的 `modifiedTime` 和本機 mtime，Drive 比較新才重新下載，存到 `data/raw/xlsx/{出隊名稱}_{檔名}.xlsx`。本機不存在也會下載。
+
+**地圖資料夾**（名稱符合「地圖資料夾／地圖／map／maps」）
+- `.gpx` / `.kml` → 比對時間後下載到 `app/static/gpx/{出隊名稱}/`
+- `.pdf` → 下載到 `app/static/maps/{出隊名稱}/`
+
+**紀錄資料夾**（名稱符合「紀錄資料夾／紀錄／record／records」）
+- Google 文件 → Drive API export 成純文字，存到 `data/raw/txt/{出隊名稱}/`
+- `.txt` / `.md` / `.docx` → 比對時間後下載
+
+> modifiedTime 比對規則：Drive 檔案的 `modifiedTime`（UTC）> 本機 mtime → 重新下載；否則跳過。
+
+---
+
+### Step 3：`scripts/normalize.py`
+
+掃描 `data/raw/xlsx/` 下所有 xlsx，每個檔案跑一次完整流程：
+
+**讀取 P1 sheet**（sheet 名稱為「直企P1(列印)」或「直企列印 P1」）
+
+| 儲存格 | 內容 |
 |---|---|
-| xlsx | `data/raw/xlsx/{出隊名}_{drive_filename}.xlsx` |
-| GPX / KML | `app/static/gpx/{出隊名}_{drive_filename}`（支援多檔） |
-| PDF | `app/static/maps/{出隊名}_{drive_filename}`（支援多檔） |
-| txt / md / docx | `data/raw/txt/{出隊名}_{filename}`（扁平，無子資料夾） |
-| Google 文件 | 匯出為 `data/raw/txt/{出隊名}_{name}.txt` |
+| `D2` | 出隊名稱 |
+| `C3` | 出發日（民國年，轉成 `YYYY-MM-DD`） |
+| `C4` | 回程日 |
+| `F3` | 入山地點（抓縣市 + 鄉鎮，「臺南市」→「台南」） |
+| `F4` | 出山地點 |
 
-**冪等保護：** 目標檔案已存在時直接跳過，不重複下載。
+**讀取 P2 sheet**（sheet 名稱為「直企P2(列印)」或「直企列印 P2」）
+- M/N 欄第 3～11 列 → 留守資料，拼成 `description`
+- `D10` → 若有 Garmin 追蹤連結一併附上
+- 第 15 列起往下掃隊員：A 欄「領／嚮／隊／新」判斷角色，B 欄系所，D 欄姓名，F 欄山歷
 
----
+**查重複**
+以出隊名稱 + 出發日查 `expeditions` 表：
+- 已存在 → 只跑 `scan_static_files` 補掃靜態檔，結束
+- 不存在 → 依序 INSERT `expeditions`、`members`、`expedition_counties`
 
-### 正規化入庫（`scripts/normalize.py`）
+**`scan_static_files`**
 
-預設掃描 `data/raw/xlsx/`，也可傳指定檔案路徑：
+目錄名優先用 `{id}/`，若還是 `{出隊名稱}/` 自動改名。掃三個位置：
 
-```bash
-python3 scripts/normalize.py                         # 掃描全部
-python3 scripts/normalize.py data/raw/xlsx/foo.xlsx  # 指定檔案
-```
+| 來源目錄 | 處理 | 目的地 |
+|---|---|---|
+| `app/static/gpx/{id}/` | 算 storage 安全路徑 → 查重 → INSERT → upsert 上傳 | Supabase Storage `gpx` bucket |
+| `app/static/maps/{id}/` | 同上 | Supabase Storage `maps` bucket |
+| `data/raw/txt/{id}/` | 讀內容（docx 用 python-docx、pdf 用 PyMuPDF、其他直接讀 utf-8）→ 查重 → INSERT | `records.content`（不上傳 Storage） |
 
-**處理步驟：**
+Storage 路徑命名規則（`storage_safe_name()`）：中文或特殊字元檔名 → 取 SHA1 前 12 碼 + 副檔名；純 ASCII 檔名 → 清除特殊字元後直接用。`filename` 欄位保留原始中文名供前端顯示。
 
-```
-讀取 xlsx
-  ↓
-解析 P1 sheet（直企P1(列印) 或 直企列印 P1）
-  → 出隊名稱、出發日、回程日、入山地點（縣市＋鄉鎮）、出山地點（縣市＋鄉鎮）
-  ↓
-解析 P2 sheet（直企P2(列印) 或 直企列印 P2）
-  → 留守資料（M/N 欄）→ description
-  ↓
-查詢 Supabase：是否已存在同名＋同日期的出隊？
-  ├─ 已存在 → 補掃靜態檔案後結束
-  └─ 不存在 → INSERT expeditions + expedition_counties + members
-              ↓
-              scan_static_files
-              ↓
-              生成截圖預覽（P1 PNG）→ 上傳 Storage previews bucket
-              ↓
-              UPDATE expeditions SET preview_image = '{id}.png'
-```
-
-**scan_static_files 行為：**
-
-| 資源 | 本地來源 | Supabase Storage | DB 寫入 |
-|---|---|---|---|
-| GPX / KML | `app/static/gpx/{id}/` | `gpx` bucket，路徑 `{id}/{filename}` | `gpx_files` |
-| PDF | `app/static/maps/{id}/` | `maps` bucket，路徑 `{id}/{filename}` | `map_files` |
-| txt / md / docx | `data/raw/txt/{id}/` | 不上傳（內容存 DB） | `records.content` |
-
-每種資源均支援多檔；`.docx` 透過 `python-docx` 提取純文字後存入 `records.content`。
-
-**重複執行（idempotency）：**
-- 查詢 Supabase 確認已存在 → 跳過
-- Storage 上傳使用 `upsert: true`，覆蓋舊檔不報錯
+**截圖預覽**
+1. P1 sheet 的列印範圍設為 `A2:G27`，其他 sheet 刪掉，另存暫時 xlsx
+2. LibreOffice headless 把暫時 xlsx 轉成 PDF
+3. PyMuPDF 把 PDF 第一頁渲染成 2× 解析度 PNG
+4. `trim_whitespace()` — 裁掉白邊，保留 15px padding
+5. `build_a4_preview()` — 縮放到寬 1240px，超過 A4 高度（1754px）等比縮小
+6. 上傳 `previews/{id}.png` → UPDATE `expeditions.preview_image`
 
 ---
 
-### 截圖生成邏輯
-
-1. 擷取 P1 範圍（`A2:G27`）→ LibreOffice 轉 PDF → PyMuPDF 轉 PNG（2× 解析度）
-2. `trim_whitespace()`：裁切空白邊框，保留 15px padding
-3. `build_a4_preview()`：目標寬 1240px，超過 A4 高度等比縮小
-4. 輸出 PNG → 上傳 Supabase Storage `previews/{id}.png`
+跑完後 CI 機器銷毀，網站下次請求時直接從 Supabase 讀取更新後的資料。
 
 ---
 
