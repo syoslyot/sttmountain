@@ -1,46 +1,41 @@
 """
-讀取出隊 Excel（all in one 直企格式），寫入 Supabase，並生成 P1/P2 截圖上傳 Storage。
-資料來源：直企P1（出隊資訊）、直企P2（隊員名單、留守資料）。
+讀取 sync_meta.json，解析直企 xlsx，寫入 Supabase，生成 P1+P2 截圖上傳 Storage。
+
 用法：
-  python3 scripts/normalize.py                    # 處理 data/raw/xlsx/ 下所有 xlsx
-  python3 scripts/normalize.py data/raw/xlsx/foo.xlsx
-環境變數（或 .env）：
-  SUPABASE_URL            — Supabase project URL
-  SUPABASE_SERVICE_KEY    — service_role key（寫入權限）
+  python3 scripts/normalize.py                      # 讀 data/raw/sync_meta.json
+  python3 scripts/normalize.py path/to/sync_meta.json
+
+環境變數：
+  SUPABASE_URL          — Supabase project URL
+  SUPABASE_SERVICE_KEY  — service_role key
 """
-import re
-import sys
+
 import hashlib
+import json
+import os
+import re
 import subprocess
+import sys
 import tempfile
 from pathlib import Path
 
 import fitz
 import openpyxl
-from openpyxl.worksheet.properties import PageSetupProperties
+from openpyxl.utils import get_column_letter
 from openpyxl.worksheet.page import PageMargins
+from openpyxl.worksheet.properties import PageSetupProperties
 from PIL import Image, ImageOps
 from dotenv import load_dotenv
 from supabase import create_client, Client
 
 load_dotenv()
 
-import os
 SUPABASE_URL = os.environ["SUPABASE_URL"]
 SUPABASE_KEY = os.environ["SUPABASE_SERVICE_KEY"]
-
 supabase: Client = create_client(SUPABASE_URL, SUPABASE_KEY)
 
-XLSX_STAGING    = Path(__file__).parent.parent / "data" / "raw"
-XLSX_DIR        = Path(__file__).parent.parent / "data" / "raw" / "xlsx"
-TXT_DIR         = Path(__file__).parent.parent / "data" / "raw" / "txt"
-STATIC_GPX      = Path(__file__).parent.parent / "app" / "static" / "gpx"
-STATIC_MAPS     = Path(__file__).parent.parent / "app" / "static" / "maps"
+META_PATH       = Path(__file__).parent.parent / "data" / "raw" / "sync_meta.json"
 STATIC_PREVIEWS = Path(__file__).parent.parent / "app" / "static" / "previews"
-
-GPX_EXTS    = {".gpx", ".kml"}
-MAP_EXTS    = {".pdf"}
-RECORD_EXTS = {".txt", ".md", ".docx", ".pdf"}
 
 COUNTY_NORMALIZE = {
     "臺北市": "台北", "台北市": "台北",
@@ -62,108 +57,50 @@ COUNTY_NORMALIZE = {
     "臺東縣": "台東", "台東縣": "台東",
 }
 
-ROLE_MAP = {"領": "領隊", "嚮": "嚮導", "隊": "隊員", "新": "新生"}
+CONTENT_TYPE_MAP = {
+    ".pdf":  "application/pdf",
+    ".docx": "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+    ".jpg":  "image/jpeg",
+    ".jpeg": "image/jpeg",
+    ".png":  "image/png",
+    ".gpx":  "application/gpx+xml",
+    ".kml":  "application/vnd.google-earth.kml+xml",
+}
 
+
+# ── 工具函式 ─────────────────────────────────────────────────
 
 def roc_to_iso(text: str) -> str | None:
     m = re.search(r"(\d+)\s*年\s*(\d+)\s*月\s*(\d+)\s*日", str(text))
     if not m:
         return None
     y = int(m.group(1)) + 1911
-    mo, d = int(m.group(2)), int(m.group(3))
-    return f"{y:04d}-{mo:02d}-{d:02d}"
+    return f"{y:04d}-{int(m.group(2)):02d}-{int(m.group(3)):02d}"
 
 
-def extract_county_region(location: str):
+def extract_county_town(location: str) -> tuple[str | None, str | None]:
     county = None
     for official, display in COUNTY_NORMALIZE.items():
         if official in location:
             county = display
             break
-    region = None
-    m2 = re.search(r"[縣市](.{1,6}?)[鄉鎮市區]", location)
-    if m2:
-        region = m2.group(1)
-    return county, region
+    town = None
+    m = re.search(r"[縣市](.{1,6}?[鄉鎮市區])", location)
+    if m:
+        town = m.group(1)
+    return county, town
 
 
-def capture_sheet_range(xlsx_path: Path, sheet_name: str, cell_range: str, output_path: Path):
-    with tempfile.TemporaryDirectory() as tmp:
-        tmp = Path(tmp)
-        wb = openpyxl.load_workbook(xlsx_path, data_only=True)
-        ws = wb[sheet_name]
-        ws.print_area = cell_range
-        if ws.sheet_properties.pageSetUpPr is None:
-            ws.sheet_properties.pageSetUpPr = PageSetupProperties(fitToPage=True)
-        else:
-            ws.sheet_properties.pageSetUpPr.fitToPage = True
-        ws.page_setup.fitToWidth = 1
-        ws.page_setup.fitToHeight = 1
-        ws.page_setup.scale = None
-        ws.page_margins = PageMargins(left=0.2, right=0.2, top=0.2, bottom=0.2, header=0, footer=0)
-        for name in list(wb.sheetnames):
-            if name != sheet_name:
-                del wb[name]
-        tmp_xlsx = tmp / "preview.xlsx"
-        wb.save(tmp_xlsx)
-        result = subprocess.run(
-            ["libreoffice", "--headless", "--convert-to", "pdf",
-             str(tmp_xlsx), "--outdir", str(tmp)],
-            capture_output=True, timeout=60
-        )
-        if result.returncode != 0:
-            print(f"    ⚠ LibreOffice 失敗：{result.stderr.decode()[:200]}")
-            return
-        pdf_path = tmp / "preview.pdf"
-        if not pdf_path.exists():
-            print(f"    ⚠ PDF 未生成")
-            return
-        doc = fitz.open(pdf_path)
-        pix = doc[0].get_pixmap(matrix=fitz.Matrix(2.0, 2.0))
-        output_path.parent.mkdir(parents=True, exist_ok=True)
-        pix.save(str(output_path))
-
-
-def trim_whitespace(img: Image.Image, padding: int = 15) -> Image.Image:
-    gray = img.convert("L")
-    bbox = ImageOps.invert(gray).getbbox()
-    if not bbox:
-        return img
-    l, t, r, b = bbox
-    return img.crop((max(0, l - padding), max(0, t - padding),
-                     min(img.width, r + padding), min(img.height, b + padding)))
-
-
-def build_a4_preview(paths: list[Path], output_path: Path):
-    A4_W, A4_H, GAP = 1240, 1754, 16
-    imgs = [trim_whitespace(Image.open(p)) for p in paths if p.exists()]
-    if not imgs:
-        return
-    target_w = A4_W
-    resized = [img.resize((target_w, round(img.height * target_w / img.width)), Image.LANCZOS)
-               for img in imgs]
-    total_h = sum(img.height for img in resized) + GAP * (len(resized) - 1)
-    if total_h > A4_H:
-        scale = A4_H / total_h
-        target_w = round(A4_W * scale)
-        resized = [img.resize((target_w, round(img.height * target_w / img.width)), Image.LANCZOS)
-                   for img in imgs]
-        total_h = sum(img.height for img in resized) + GAP * (len(resized) - 1)
-    canvas = Image.new("RGB", (max(img.width for img in resized), total_h), "white")
-    y = 0
-    for img in resized:
-        canvas.paste(img, (0, y))
-        y += img.height + GAP
-    output_path.parent.mkdir(parents=True, exist_ok=True)
-    canvas.save(str(output_path))
+def cell_value(ws, coord: str) -> str:
+    return str(ws[coord].value or "").strip()
 
 
 def storage_safe_name(filename: str) -> str:
     suffix = Path(filename).suffix.lower()
     try:
-        filename.encode('ascii')
-        safe = re.sub(r'[^\w\-.]', '_', Path(filename).stem, flags=re.ASCII)
-        safe = re.sub(r'_{2,}', '_', safe).strip('_') or 'file'
+        filename.encode("ascii")
+        safe = re.sub(r"[^\w\-.]", "_", Path(filename).stem, flags=re.ASCII)
+        safe = re.sub(r"_{2,}", "_", safe).strip("_") or "file"
         return f"{safe}{suffix}"
     except UnicodeEncodeError:
         name_hash = hashlib.sha1(filename.encode()).hexdigest()[:12]
@@ -181,120 +118,109 @@ def storage_upload(bucket: str, path: str, local_path: Path, content_type: str):
         print(f"    ⚠ 上傳 {bucket}/{path} 失敗：{e}")
 
 
-def scan_static_files(exp_id: int, exp_name: str):
-    def resolve_dir(base: Path) -> Path | None:
-        by_id   = base / str(exp_id)
-        by_name = base / exp_name
-        if by_id.is_dir():
-            return by_id
-        if by_name.is_dir():
-            by_name.rename(by_id)
-            return by_id
-        return None
+# ── 截圖 ─────────────────────────────────────────────────────
 
-    gpx_dir = resolve_dir(STATIC_GPX)
-    if gpx_dir:
-        for f in sorted(gpx_dir.iterdir()):
-            if f.suffix.lower() not in GPX_EXTS:
-                continue
-            safe_name    = storage_safe_name(f.name)
-            storage_path = f"{exp_id}/{safe_name}"
-            existing = supabase.table("gpx_files").select("id").eq("expedition_id", exp_id).eq("filename", f.name).execute()
-            if not existing.data:
-                supabase.table("gpx_files").insert(
-                    {"expedition_id": exp_id, "filename": f.name, "file_path": storage_path}
-                ).execute()
-            storage_upload("gpx", storage_path, f, "application/gpx+xml")
-
-    maps_dir = resolve_dir(STATIC_MAPS)
-    if maps_dir:
-        for f in sorted(maps_dir.iterdir()):
-            if f.suffix.lower() not in MAP_EXTS:
-                continue
-            safe_name    = storage_safe_name(f.name)
-            storage_path = f"{exp_id}/{safe_name}"
-            existing = supabase.table("map_files").select("id").eq("expedition_id", exp_id).eq("filename", f.name).execute()
-            if not existing.data:
-                supabase.table("map_files").insert(
-                    {"expedition_id": exp_id, "filename": f.name, "file_path": storage_path}
-                ).execute()
-            storage_upload("maps", storage_path, f, "application/pdf")
-
-    txt_dir = resolve_dir(TXT_DIR)
-    if txt_dir:
-        for f in sorted(txt_dir.iterdir()):
-            if f.suffix.lower() not in RECORD_EXTS:
-                continue
-            existing = supabase.table("records").select("id").eq("expedition_id", exp_id).eq("filename", f.name).execute()
-            if existing.data:
-                continue
-            ext = f.suffix.lower()
-            if ext == ".docx":
-                from docx import Document
-                doc = Document(f)
-                parts = [p.text for p in doc.paragraphs if p.text.strip()]
-                for table in doc.tables:
-                    for row in table.rows:
-                        row_text = "  ".join(c.text.strip() for c in row.cells if c.text.strip())
-                        if row_text:
-                            parts.append(row_text)
-                content = "\n".join(parts)
-            elif ext == ".pdf":
-                doc = fitz.open(str(f))
-                content = "\n".join(page.get_text() for page in doc)
-                doc.close()
-            else:
-                content = f.read_text(encoding="utf-8", errors="replace")
-            supabase.table("records").insert(
-                {"expedition_id": exp_id, "filename": f.name, "content": content}
-            ).execute()
-
-    print(f"    靜態檔案已掃描")
+def find_content_bounds(ws) -> tuple[int, int]:
+    max_row, max_col = 1, 1
+    for row in ws.iter_rows():
+        for cell in row:
+            if cell.value is not None:
+                max_row = max(max_row, cell.row)
+                max_col = max(max_col, cell.column)
+    return max_row, max_col
 
 
-def parse_p1(ws):
-    name = str(ws["D2"].value or "").strip() or None
-    date_start = roc_to_iso(ws["C3"].value or "")
-    date_end = roc_to_iso(ws["C4"].value or "")
-    entry_loc = str(ws["F3"].value or "")
-    exit_loc  = str(ws["F4"].value or "")
-    county, region = extract_county_region(entry_loc)
-    county_exit, region_exit = extract_county_region(exit_loc)
-    return name, date_start, date_end, county, region, county_exit, region_exit
+def capture_sheet(xlsx_path: Path, sheet_name: str, cell_range: str | None, output_path: Path):
+    """
+    將指定 sheet 轉成 PNG。
+    cell_range=None：自動偵測內容邊界（P1）。
+    cell_range="B2:O12"：固定範圍（P2）。
+    """
+    with tempfile.TemporaryDirectory() as _tmp:
+        tmp = Path(_tmp)
+        wb = openpyxl.load_workbook(xlsx_path, data_only=True)
+        ws = wb[sheet_name]
+
+        if cell_range is None:
+            max_row, max_col = find_content_bounds(ws)
+            cell_range = f"A1:{get_column_letter(max_col)}{max_row}"
+
+        ws.print_area = cell_range
+        if ws.sheet_properties.pageSetUpPr is None:
+            ws.sheet_properties.pageSetUpPr = PageSetupProperties(fitToPage=True)
+        else:
+            ws.sheet_properties.pageSetUpPr.fitToPage = True
+        ws.page_setup.fitToWidth = 1
+        ws.page_setup.fitToHeight = 1
+        ws.page_setup.scale = None
+        ws.page_margins = PageMargins(left=0.2, right=0.2, top=0.2, bottom=0.2, header=0, footer=0)
+
+        for name in list(wb.sheetnames):
+            if name != sheet_name:
+                del wb[name]
+
+        tmp_xlsx = tmp / "sheet.xlsx"
+        wb.save(tmp_xlsx)
+
+        result = subprocess.run(
+            ["libreoffice", "--headless", "--convert-to", "pdf",
+             str(tmp_xlsx), "--outdir", str(tmp)],
+            capture_output=True, timeout=60,
+        )
+        if result.returncode != 0:
+            print(f"    ⚠ LibreOffice 失敗：{result.stderr.decode()[:200]}")
+            return
+
+        pdf_path = tmp / "sheet.pdf"
+        if not pdf_path.exists():
+            print(f"    ⚠ PDF 未生成")
+            return
+
+        doc = fitz.open(pdf_path)
+        pix = doc[0].get_pixmap(matrix=fitz.Matrix(2.0, 2.0))
+        output_path.parent.mkdir(parents=True, exist_ok=True)
+        pix.save(str(output_path))
 
 
-def parse_p2(ws):
-    desc_parts = []
-    for r in range(3, 12):
-        label = str(ws.cell(r, 13).value or "").strip()
-        value = str(ws.cell(r, 14).value or "").strip()
-        if label and value:
-            desc_parts.append(f"{label}：{value}")
-    garmin = str(ws["D10"].value or "").strip()
-    if garmin.startswith("http"):
-        desc_parts.append(f"Garmin 追蹤：{garmin}")
-    notes = str(ws["D11"].value or "").strip()
-    if notes:
-        desc_parts.append(f"注意事項：{notes}")
-    description = "\n".join(desc_parts) or None
+def trim_whitespace(img: Image.Image, padding: int = 15) -> Image.Image:
+    gray = img.convert("L")
+    bbox = ImageOps.invert(gray).getbbox()
+    if not bbox:
+        return img
+    l, t, r, b = bbox
+    return img.crop((max(0, l - padding), max(0, t - padding),
+                     min(img.width, r + padding), min(img.height, b + padding)))
 
-    members: list[tuple[str, str | None, str | None, str | None]] = []
-    current_role: str | None = None
-    for r in range(15, ws.max_row + 1):
-        role_abbr = str(ws.cell(r, 1).value or "").strip()
-        dept_raw  = str(ws.cell(r, 2).value or "").strip()
-        name_raw  = str(ws.cell(r, 4).value or "").strip()
-        exp_raw   = str(ws.cell(r, 6).value or "").strip()
-        if role_abbr in ROLE_MAP:
-            current_role = ROLE_MAP[role_abbr]
-        name = name_raw.split("\n")[0].strip()
-        department = dept_raw.split("\n")[0].strip() or None
-        experience = exp_raw.split("\n")[0].strip() or None
-        if name and current_role is not None:
-            members.append((name, current_role, department, experience))
 
-    return description, members
+def build_preview(p1_path: Path, p2_path: Path, output_path: Path):
+    A4_W, A4_H, GAP = 1240, 1754, 16
+    imgs = []
+    for p in (p1_path, p2_path):
+        if p.exists():
+            imgs.append(trim_whitespace(Image.open(p)))
+    if not imgs:
+        return
 
+    resized = [img.resize((A4_W, round(img.height * A4_W / img.width)), Image.LANCZOS)
+               for img in imgs]
+    total_h = sum(i.height for i in resized) + GAP * (len(resized) - 1)
+    if total_h > A4_H:
+        scale = A4_H / total_h
+        w = round(A4_W * scale)
+        resized = [img.resize((w, round(img.height * w / img.width)), Image.LANCZOS)
+                   for img in resized]
+        total_h = sum(i.height for i in resized) + GAP * (len(resized) - 1)
+
+    canvas = Image.new("RGB", (max(i.width for i in resized), total_h), "white")
+    y = 0
+    for img in resized:
+        canvas.paste(img, (0, y))
+        y += img.height + GAP
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+    canvas.save(str(output_path))
+
+
+# ── 直企解析 ─────────────────────────────────────────────────
 
 P1_NAMES = ["直企P1(列印)", "直企列印 P1"]
 P2_NAMES = ["直企P2(列印)", "直企列印 P2"]
@@ -307,88 +233,154 @@ def find_sheet(wb, candidates: list[str]) -> str | None:
     return None
 
 
-def normalize(xlsx_path: Path):
-    wb = openpyxl.load_workbook(xlsx_path, data_only=True)
+def parse_p1(ws) -> dict:
+    name       = cell_value(ws, "D2")
+    date_start = roc_to_iso(cell_value(ws, "D3"))
+    date_end   = roc_to_iso(cell_value(ws, "D4"))
+    entry_loc  = cell_value(ws, "F3")
+    exit_loc   = cell_value(ws, "F4")
+    leader     = cell_value(ws, "C17") or None
+    entry_county, entry_town = extract_county_town(entry_loc)
+    exit_county,  exit_town  = extract_county_town(exit_loc)
+    return {
+        "name":                name or None,
+        "date_start":          date_start,
+        "date_end":            date_end,
+        "region_entry_county": entry_county,
+        "region_entry_town":   entry_town,
+        "region_exit_county":  exit_county,
+        "region_exit_town":    exit_town,
+        "leader":              leader,
+    }
 
-    p1_name = find_sheet(wb, P1_NAMES)
-    if not p1_name:
-        print(f"  ⚠ 找不到 P1 sheet，跳過 {xlsx_path.name}")
-        return
 
-    ws_p1 = wb[p1_name]
-    name, date_start, date_end, county, region, county_exit, region_exit = parse_p1(ws_p1)
+# ── DB 操作 ──────────────────────────────────────────────────
 
-    if not name:
-        print(f"  ⚠ 無法取得出隊名稱，跳過 {xlsx_path.name}")
-        return
-    if not date_start:
-        print(f"  ⚠ 無法解析 date_start，跳過 {xlsx_path.name}")
-        return
-
-    description, members = None, []
-    p2_name = find_sheet(wb, P2_NAMES)
-    if p2_name:
-        description, members = parse_p2(wb[p2_name])
-    else:
-        print(f"  ⚠ 找不到 P2 sheet，隊員與留守資料略過")
-
-    existing = supabase.table("expeditions").select("id").eq("name", name).eq("date_start", date_start).execute()
+def upsert_group(drive_folder_id: str, name: str) -> int:
+    existing = supabase.table("expedition_groups").select("id").eq("drive_folder_id", drive_folder_id).execute()
     if existing.data:
-        exp_id = existing.data[0]["id"]
-        print(f"  → 已存在（id={exp_id}）：{name}，補掃靜態檔案")
-        scan_static_files(exp_id, name)
-        return
-
-    result = supabase.table("expeditions").insert({
+        return existing.data[0]["id"]
+    result = supabase.table("expedition_groups").insert({
         "name": name,
-        "date_start": date_start,
-        "date_end": date_end,
-        "county": county,
-        "region": region,
-        "region_exit": region_exit,
-        "description": description,
+        "drive_folder_id": drive_folder_id,
     }).execute()
-    exp_id = result.data[0]["id"]
+    return result.data[0]["id"]
 
-    if members:
-        supabase.table("members").insert([
-            {"expedition_id": exp_id, "name": mname, "role": mrole, "department": mdept, "experience": mexp}
-            for mname, mrole, mdept, mexp in members
-        ]).execute()
 
-    counties = {c for c in {county, county_exit} if c}
-    if counties:
-        supabase.table("expedition_counties").insert([
-            {"expedition_id": exp_id, "county": c} for c in counties
-        ]).execute()
+def upsert_expedition(drive_folder_id: str, group_id: int, fields: dict) -> tuple[int, bool]:
+    existing = supabase.table("expeditions").select("id").eq("drive_folder_id", drive_folder_id).execute()
+    if existing.data:
+        return existing.data[0]["id"], False
+    result = supabase.table("expeditions").insert({
+        "drive_folder_id": drive_folder_id,
+        "group_id": group_id,
+        **fields,
+    }).execute()
+    return result.data[0]["id"], True
 
-    XLSX_DIR.mkdir(parents=True, exist_ok=True)
-    xlsx_dest = XLSX_DIR / xlsx_path.name
-    if xlsx_path != xlsx_dest and not xlsx_dest.exists():
-        xlsx_path.rename(xlsx_dest)
-        xlsx_path = xlsx_dest
 
-    scan_static_files(exp_id, name)
+def sync_file_record(table: str, expedition_id: int, drive_file_id: str,
+                     filename: str, extra: dict):
+    existing = supabase.table(table).select("id").eq("drive_file_id", drive_file_id).execute()
+    if existing.data:
+        supabase.table(table).update({"filename": filename, **extra}).eq("drive_file_id", drive_file_id).execute()
+    else:
+        supabase.table(table).insert({
+            "expedition_id": expedition_id,
+            "drive_file_id": drive_file_id,
+            "filename": filename,
+            **extra,
+        }).execute()
 
-    print(f"  ✓ 已插入：{name}（id={exp_id}）")
-    print(f"    日期：{date_start} ～ {date_end or '—'}")
-    print(f"    地點：{county or '—'} · {region or '—'}")
-    print(f"    隊員：{len(members)} 人")
 
+def sync_counties(expedition_id: int, counties: set[str]):
+    for county in counties:
+        supabase.table("expedition_counties").upsert(
+            {"expedition_id": expedition_id, "county": county},
+            on_conflict="expedition_id,county",
+        ).execute()
+
+
+# ── 靜態檔案 ─────────────────────────────────────────────────
+
+def process_gpx_files(expedition_id: int, file_entries: list[dict]):
+    for f in file_entries:
+        local = Path(f["local_path"])
+        if not local.exists():
+            continue
+        safe = storage_safe_name(f["name"])
+        storage_path = f"{expedition_id}/{safe}"
+        content_type = CONTENT_TYPE_MAP.get(local.suffix.lower(), "application/octet-stream")
+        storage_upload("gpx", storage_path, local, content_type)
+        sync_file_record("gpx_files", expedition_id, f["drive_file_id"],
+                         f["name"], {"file_path": storage_path})
+
+
+def process_map_files(expedition_id: int, file_entries: list[dict]):
+    for f in file_entries:
+        local = Path(f["local_path"])
+        if not local.exists():
+            continue
+        safe = storage_safe_name(f["name"])
+        storage_path = f"{expedition_id}/{safe}"
+        content_type = CONTENT_TYPE_MAP.get(local.suffix.lower(), "application/octet-stream")
+        storage_upload("maps", storage_path, local, content_type)
+        sync_file_record("map_files", expedition_id, f["drive_file_id"],
+                         f["name"], {"file_path": storage_path})
+
+
+def process_record_files(expedition_id: int, file_entries: list[dict]):
+    for f in file_entries:
+        local = Path(f["local_path"])
+        if not local.exists():
+            continue
+        ext = local.suffix.lower()
+        if ext == ".docx":
+            from docx import Document
+            doc = Document(local)
+            parts = [p.text for p in doc.paragraphs if p.text.strip()]
+            for table in doc.tables:
+                for row in table.rows:
+                    row_text = "  ".join(c.text.strip() for c in row.cells if c.text.strip())
+                    if row_text:
+                        parts.append(row_text)
+            content = "\n".join(parts)
+        elif ext == ".pdf":
+            doc = fitz.open(str(local))
+            content = "\n".join(page.get_text() for page in doc)
+            doc.close()
+        else:
+            content = local.read_text(encoding="utf-8", errors="replace")
+        sync_file_record("records", expedition_id, f["drive_file_id"],
+                         f["name"], {"content": content})
+
+
+# ── 截圖與上傳 ───────────────────────────────────────────────
+
+def generate_and_upload_preview(xlsx_path: Path, exp_id: int):
     STATIC_PREVIEWS.mkdir(parents=True, exist_ok=True)
     preview_local = STATIC_PREVIEWS / f"{exp_id}.png"
+
+    wb = openpyxl.load_workbook(xlsx_path, data_only=True)
+    p1_name = find_sheet(wb, P1_NAMES)
+    p2_name = find_sheet(wb, P2_NAMES)
+
     with tempfile.TemporaryDirectory() as _tmp:
-        _tmp = Path(_tmp)
-        p1_path = _tmp / "p1.png"
+        tmp = Path(_tmp)
+        p1_png = tmp / "p1.png"
+        p2_png = tmp / "p2.png"
 
-        print(f"    截圖 P1...", end=" ", flush=True)
         if p1_name:
-            capture_sheet_range(xlsx_path, p1_name, "A2:G27", p1_path)
-            print("完成" if p1_path.exists() else "失敗")
-        else:
-            print("跳過")
+            print(f"    截圖 P1...", end=" ", flush=True)
+            capture_sheet(xlsx_path, p1_name, None, p1_png)
+            print("完成" if p1_png.exists() else "失敗")
 
-        build_a4_preview([p1_path], preview_local)
+        if p2_name:
+            print(f"    截圖 P2...", end=" ", flush=True)
+            capture_sheet(xlsx_path, p2_name, "B2:O12", p2_png)
+            print("完成" if p2_png.exists() else "失敗")
+
+        build_preview(p1_png, p2_png, preview_local)
 
     if preview_local.exists():
         storage_upload("previews", f"{exp_id}.png", preview_local, "image/png")
@@ -396,16 +388,85 @@ def normalize(xlsx_path: Path):
         print(f"    預覽圖：{exp_id}.png")
 
 
-def main():
-    target = Path(sys.argv[1]) if len(sys.argv) >= 2 else XLSX_STAGING
-    files = sorted(target.glob("*.xlsx")) if target.is_dir() else [target]
+# ── 主流程 ───────────────────────────────────────────────────
 
-    for f in files:
-        print(f"\n處理：{f.name}")
+def process_expedition(entry: dict, group_id: int):
+    xlsx_info = entry.get("xlsx")
+    if not xlsx_info:
+        print(f"  ⚠ 無直企資訊，跳過 {entry['name']}")
+        return
+
+    xlsx_path = Path(xlsx_info["local_path"])
+    if not xlsx_path.exists():
+        print(f"  ⚠ 找不到 xlsx：{xlsx_path}，跳過")
+        return
+
+    wb = openpyxl.load_workbook(xlsx_path, data_only=True)
+    p1_name = find_sheet(wb, P1_NAMES)
+    if not p1_name:
+        print(f"  ⚠ 找不到 P1 sheet，跳過 {entry['name']}")
+        return
+
+    fields = parse_p1(wb[p1_name])
+    if not fields["name"]:
+        print(f"  ⚠ 無法取得出隊名稱，跳過")
+        return
+    if not fields["date_start"]:
+        print(f"  ⚠ 無法解析 date_start，跳過")
+        return
+
+    exp_id, is_new = upsert_expedition(entry["drive_folder_id"], group_id, fields)
+
+    counties = {c for c in (fields["region_entry_county"], fields["region_exit_county"]) if c}
+    if counties:
+        sync_counties(exp_id, counties)
+
+    process_gpx_files(exp_id, entry.get("gpx_files", []))
+    process_map_files(exp_id, entry.get("map_files", []))
+    process_record_files(exp_id, entry.get("record_files", []))
+
+    if is_new:
+        print(f"  ✓ 新增：{fields['name']}（id={exp_id}）")
+        generate_and_upload_preview(xlsx_path, exp_id)
+    else:
+        print(f"  → 更新檔案：{fields['name']}（id={exp_id}）")
+
+
+def update_last_synced_at(synced_at: str):
+    supabase.table("sync_state").upsert(
+        {"key": "last_synced_at", "value": synced_at},
+        on_conflict="key",
+    ).execute()
+
+
+def main():
+    meta_path = Path(sys.argv[1]) if len(sys.argv) >= 2 else META_PATH
+    if not meta_path.exists():
+        print(f"sync_meta.json 不存在：{meta_path}", file=sys.stderr)
+        sys.exit(1)
+
+    meta = json.loads(meta_path.read_text(encoding="utf-8"))
+
+    for solo in meta.get("solos", []):
+        print(f"\n處理（solo）：{solo['name']}")
         try:
-            normalize(f)
+            group_id = upsert_group(solo["drive_folder_id"], solo["name"])
+            process_expedition(solo, group_id)
         except Exception as e:
             print(f"  ✗ 錯誤：{e}")
+
+    for group in meta.get("groups", []):
+        print(f"\n處理（group）：{group['name']}")
+        try:
+            group_id = upsert_group(group["drive_folder_id"], group["name"])
+            for team in group.get("teams", []):
+                print(f"  隊伍：{team['name']}")
+                process_expedition(team, group_id)
+        except Exception as e:
+            print(f"  ✗ 錯誤：{e}")
+
+    update_last_synced_at(meta["synced_at"])
+    print(f"\nnormalize complete, last_synced_at → {meta['synced_at']}")
 
 
 if __name__ == "__main__":
