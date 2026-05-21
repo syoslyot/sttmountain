@@ -6,7 +6,7 @@
 {% if gpx_files or map_files %}
 <div class="flex items-center gap-2">
   {% for f in gpx_files %}
-  <a href="/static/gpx/{{ f.file_path }}" download
+  <a href="{{ storage_base }}/gpx/{{ f.file_path }}" download
      class="inline-flex items-center gap-1.5 text-white/80 hover:text-white hover:bg-white/10 rounded px-3 py-1.5 text-sm transition-colors">
     <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
       <path stroke-linecap="round" stroke-linejoin="round" d="M3 16.5v2.25A2.25 2.25 0 0 0 5.25 21h13.5A2.25 2.25 0 0 0 21 18.75V16.5M16.5 12 12 16.5m0 0L7.5 12m4.5 4.5V3"/>
@@ -15,7 +15,7 @@
   </a>
   {% endfor %}
   {% for f in map_files %}
-  <a href="/static/maps/{{ f.file_path }}" download
+  <a href="{{ storage_base }}/maps/{{ f.file_path }}" download
      class="inline-flex items-center gap-1.5 text-white/80 hover:text-white hover:bg-white/10 rounded px-3 py-1.5 text-sm transition-colors">
     <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
       <path stroke-linecap="round" stroke-linejoin="round" d="M3 16.5v2.25A2.25 2.25 0 0 0 5.25 21h13.5A2.25 2.25 0 0 0 21 18.75V16.5M16.5 12 12 16.5m0 0L7.5 12m4.5 4.5V3"/>
@@ -64,7 +64,7 @@
 
   {# 直企截圖（P1+P2 合併）#}
   {% if exp.preview_image %}
-  <img src="/static/{{ exp.preview_image }}" alt="出隊計畫書"
+  <img src="{{ storage_base }}/previews/{{ exp.preview_image }}" alt="出隊計畫書"
        class="w-full rounded-xl border border-gray-200">
   {% endif %}
 
@@ -99,7 +99,7 @@
     "嘉義":[23.48,120.45],"台南":[23.00,120.21],"高雄":[22.63,120.30],
     "屏東":[22.55,120.55],"台東":[22.75,121.15],
   };
-  const county = "{{ exp.county or '' }}";
+  const county = "{{ exp.region_entry_county or '' }}";
   const center = COUNTY_CENTER[county] || [23.6, 121.0];
   const zoom   = COUNTY_CENTER[county] ? 12 : 8;
 
@@ -136,7 +136,7 @@
   {% if gpx_files %}
   const _TRACKS = [
     {% for f in gpx_files %}
-    { path: "/static/gpx/{{ f.file_path }}", name: "{{ f.filename }}", kml: {{ 'true' if '.kml' in f.file_path else 'false' }} },
+    { path: "{{ storage_base }}/gpx/{{ f.file_path }}", name: "{{ f.filename }}", kml: {{ 'true' if '.kml' in f.file_path else 'false' }} },
     {% endfor %}
   ];
   const _ELEV_OPTS = {

@@ -8,11 +8,7 @@ RUN pip install --no-cache-dir -r requirements.txt
 COPY app/ ./app/
 COPY scripts/ ./scripts/
 
-RUN mkdir -p /app/app/static/gpx /app/app/static/maps /app/db
-
-# DB 由 CI 的 normalize.py 產生後 COPY 進來；本機 build 則在此初始化空 schema
-COPY db/ ./db/
-RUN python3 -c "from app.models import init_db; init_db()"
+RUN mkdir -p /app/app/static/gpx /app/app/static/maps
 
 COPY entrypoint.sh ./entrypoint.sh
 RUN chmod +x entrypoint.sh
