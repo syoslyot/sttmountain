@@ -11,7 +11,7 @@ NCKU 山社的出隊紀錄展示網站。無會員系統，純資料展示。
 | 層級 | 選擇 |
 |---|---|
 | Backend | Python 3.12 + FastAPI + Jinja2（SSR） |
-| Database | SQLite（`db/sttmount.db`） |
+| Database | Supabase（PostgreSQL + Storage） |
 | Frontend | HTML + Tailwind CSS（CDN）+ Vanilla JS |
 | 地圖 | Leaflet.js + leaflet-omnivore（GPX/KML）|
 | 地圖底圖 | NLSC 通用電子地圖（預設）/ OpenTopoMap / OSM / NLSC 正射影像 + 等高線 overlay |
@@ -88,12 +88,20 @@ sttmount/
 ## DB Schema
 
 ```sql
-expeditions  (id, name, date_start, date_end, county, region, description)
-members      (id, expedition_id, name, role, department, experience)
-gpx_files    (id, expedition_id, filename, file_path)
-map_files    (id, expedition_id, filename, file_path, file_type)
-records      (id, expedition_id, filename, content)
+expedition_groups   (id, name, drive_folder_id UNIQUE, created_at)
+expeditions         (id, group_id, drive_folder_id UNIQUE, name,
+                     date_start, date_end,
+                     region_entry_county, region_entry_town,
+                     region_exit_county, region_exit_town,
+                     leader, preview_image, created_at)
+expedition_counties (id, expedition_id, county)
+gpx_files           (id, expedition_id, drive_file_id UNIQUE, filename, file_path)
+map_files           (id, expedition_id, drive_file_id UNIQUE, filename, file_path)
+records             (id, expedition_id, drive_file_id UNIQUE, filename, content)
+sync_state          (key PK, value, updated_at)
 ```
+
+Storage buckets（public）：`gpx`、`maps`、`previews`
 
 ---
 
@@ -101,21 +109,21 @@ records      (id, expedition_id, filename, content)
 
 | 功能 | 狀態 |
 |---|---|
-| 首頁（左右分割：縣市格 / 日期 / 搜尋 + 動態結果） | ✅ 完成 |
+| 首頁（縣市格 / 日期 / 搜尋） | ✅ 完成 |
 | 地區查詢（縣市格 → 子地區列表 → 出隊列表） | ✅ 完成 |
 | 日期查詢 | ✅ 完成 |
 | 文字搜尋 | ✅ 完成 |
-| 出隊詳細頁（左右分割：地圖 + 資訊） | ✅ 完成 |
+| 出隊詳細頁（地圖 + 計畫書預覽 + 紀錄） | ✅ 完成 |
 | Leaflet 地圖（NLSC EMAP 預設、底圖切換、等高線 overlay） | ✅ 完成 |
 | GPX 高度剖面圖（leaflet-elevation） | ✅ 完成 |
 | GPX / KML 顯示 + 下載 | ✅ 完成 |
-| PDF / 圖片嵌入 + 下載 | ✅ 完成 |
-| 成員紀錄（txt）顯示 | ✅ 完成 |
-| Google Drive 同步腳本 | ✅ 完成（sync_drive.py） |
-| 假資料種子腳本 | ✅ 完成（seed.py + gen_gpx.py） |
-| GitHub Actions CI/CD | ✅ 完成（`.github/workflows/ci.yml`，Node.js 24） |
-| Excel 正規化腳本 | ⏳ 待 Excel 範例 |
+| 地圖 PDF / 圖片嵌入 + 下載 | ✅ 完成 |
+| 紀錄文章（txt）顯示 | ✅ 完成 |
 | 台灣 SVG 地圖（D3.js + Canvas hit-testing） | ✅ 完成 |
+| Google Drive 同步腳本（sync_drive.py） | ✅ 完成 |
+| Excel 正規化腳本（normalize.py） | ✅ 完成 |
+| App 從 SQLite 遷移至 Supabase client | ✅ 完成 |
+| GitHub Actions CI/CD | ✅ 完成 |
 | Server 部署文件 | ⏳ 待實作 |
 
 ---
@@ -125,15 +133,10 @@ records      (id, expedition_id, filename, content)
 ```bash
 python3 -m venv .venv && source .venv/bin/activate
 pip install -r requirements.txt
-python3 -c "from app.models import init_db; init_db()"
-python3 scripts/seed.py      # 插入 200 筆假資料
-python3 scripts/gen_gpx.py   # 產生假 GPX 軌跡檔
+# 填入 SUPABASE_URL、SUPABASE_ANON_KEY 到 .env.local
 uvicorn app.main:app --reload
 # 開啟 http://localhost:8000
 ```
-
-**DB 縣市欄規則**：一律存 17 個顯示名稱（"台北"、"南投" 等），
-normalize.py 負責將 Excel 的 "臺北市"、"台北市" 等變體統一對應。
 
 ---
 
@@ -170,5 +173,4 @@ git pull origin develop           # 立刻同步 local
 
 ## 待確認
 
-- Excel 檔案結構（欄位、分頁名稱）→ normalize.py 依此設計
 - 另一個地圖格式（目前支援 GPX + KML，其他之後補）
