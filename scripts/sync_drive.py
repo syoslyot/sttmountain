@@ -29,10 +29,14 @@ import sys
 from datetime import date, datetime, timezone
 from pathlib import Path
 
+from dotenv import load_dotenv
 from google.oauth2.service_account import Credentials
 from googleapiclient.discovery import build
 from googleapiclient.http import MediaIoBaseDownload
 from supabase import create_client
+
+load_dotenv()
+load_dotenv('.env.local', override=True)
 
 # ── 常數 ────────────────────────────────────────────────────
 
