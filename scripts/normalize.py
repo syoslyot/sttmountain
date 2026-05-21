@@ -29,6 +29,7 @@ from dotenv import load_dotenv
 from supabase import create_client, Client
 
 load_dotenv()
+load_dotenv('.env.local', override=True)
 
 SUPABASE_URL = os.environ["SUPABASE_URL"]
 SUPABASE_KEY = os.environ["SUPABASE_SERVICE_KEY"]
@@ -235,8 +236,8 @@ def find_sheet(wb, candidates: list[str]) -> str | None:
 
 def parse_p1(ws) -> dict:
     name       = cell_value(ws, "D2")
-    date_start = roc_to_iso(cell_value(ws, "D3"))
-    date_end   = roc_to_iso(cell_value(ws, "D4"))
+    date_start = roc_to_iso(cell_value(ws, "C3"))
+    date_end   = roc_to_iso(cell_value(ws, "C4"))
     entry_loc  = cell_value(ws, "F3")
     exit_loc   = cell_value(ws, "F4")
     leader     = cell_value(ws, "C17") or None

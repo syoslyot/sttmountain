@@ -96,6 +96,10 @@ create policy "anon select" on map_files          for select to anon using (true
 create policy "anon select" on records            for select to anon using (true);
 -- sync_state：anon 不可讀（only service_role）
 
+-- service_role 需要對所有 table 有完整權限（CI sync 腳本使用）
+grant all on all tables    in schema public to service_role;
+grant all on all sequences in schema public to service_role;
+
 -- ── Storage Buckets ──────────────────────────────────────────
 -- 在 Supabase Dashboard → Storage 手動建立以下三個 public bucket：
 --   gpx      — GPX / KML 軌跡檔
