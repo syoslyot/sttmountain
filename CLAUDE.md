@@ -18,26 +18,31 @@ NCKU 山社的出隊紀錄展示網站。無會員系統，純資料展示。
 | 高度剖面 | @raruto/leaflet-elevation（GPX 軌跡高度圖）|
 | 部署 | Docker Compose + Nginx，跑在 Windows 筆電（學校固定 IP，內網） |
 | 自動更新 | Watchtower（監聽 GHCR，自動 pull 新 image） |
-| CI/CD | GitHub Actions：每日同步 Drive → build image → push GHCR |
+| CI/CD | GitHub Actions（每日同步 Drive → normalize → push Supabase） |
 
 ---
 
 ## 資料來源（Google Drive）
 
+Drive 結構（2026-05-01 後的新格式）：
+
 ```
 所有出隊資料夾/
-  {出隊名稱}/
-    *.xlsx                 → data/raw/xlsx/{出隊名}.xlsx（normalize 後改名為 {id}.xlsx）
-    地圖資料夾/
-      *.gpx, *.kml         → app/static/gpx/{出隊名}.gpx（normalize 後改名為 {id}.gpx）
-      *.pdf                → app/static/maps/{出隊名}.pdf（normalize 後改名為 {id}.pdf）
-    紀錄資料夾/
-      *.txt                → data/raw/txt/{出隊名}/{filename}.txt（normalize 後資料夾改名為 {id}/，並批次 INSERT records）
+  {出隊名稱}/               ← solo：資料夾直接含直企 xlsx
+    {日期}_{名稱}_直企.xlsx
+    地圖/                   ← pdf, docx, jpg, png, jpeg
+    航跡/                   ← gpx, kml
+    上繳紀錄/               ← txt, md, docx, pdf, Google Doc
+  {活動名稱}/               ← 大眾化：資料夾含子資料夾
+    {隊伍名稱}/
+      {日期}_{名稱}_直企.xlsx
+      地圖/  航跡/  上繳紀錄/
 ```
 
 環境變數（GitHub Actions Secrets）：
 - `GDRIVE_CREDENTIALS_JSON` — Service Account JSON
 - `GDRIVE_ROOT_FOLDER_ID` — 「所有出隊資料夾」的 Drive folder ID
+- `SUPABASE_URL` / `SUPABASE_SERVICE_KEY` — Supabase 寫入權限
 
 ---
 
@@ -47,38 +52,35 @@ NCKU 山社的出隊紀錄展示網站。無會員系統，純資料展示。
 sttmount/
 ├── app/
 │   ├── main.py            # FastAPI 入口
-│   ├── models.py          # SQLite schema + get_conn()
+│   ├── models.py          # Supabase client + STORAGE_BASE
 │   ├── routes/
-│   │   ├── region.py      # / 和 /region/{county}/{region}
+│   │   ├── region.py      # / 和 /region/{county}/{region}、fragment 端點
 │   │   ├── date.py        # /date
 │   │   ├── search.py      # /search
 │   │   └── expedition.py  # /expedition/{id}
-│   ├── static/
-│   │   ├── gpx/           # GPX/KML 檔案（依出隊名分子資料夾）
-│   │   └── maps/          # PDF/圖片（依出隊名分子資料夾）
+│   ├── static/            # 前端靜態資源（CSS、favicon 等）
 │   └── templates/
 │       ├── base.html
-│       ├── index.html         # 首頁（D3.js SVG 地圖 / 日期 / 搜尋 + 動態結果）
-│       ├── region.html        # 縣市內子地區列表
+│       ├── index.html
+│       ├── region.html
 │       ├── expedition_list.html
-│       ├── expedition.html    # 出隊詳細頁（地圖、PDF、紀錄、隊員）
+│       ├── expedition.html
 │       ├── date.html
 │       └── search.html
 ├── scripts/
-│   ├── sync_drive.py      # Google Drive → 本機（已實作）
-│   ├── normalize.py       # Excel → SQLite（待 Excel 範例後實作）
-│   ├── seed.py            # 200 筆假資料（開發測試用）
-│   └── gen_gpx.py         # 產生假 GPX 軌跡檔（配合 seed.py）
-├── db/
-│   └── sttmount.db        # SQLite（gitignore）
-├── data/raw/
-│   ├── xlsx/              # Drive 下載的 xlsx（{出隊名}.xlsx → normalize 後改名為 {id}.xlsx）（gitignore）
-│   └── txt/               # Drive 下載的紀錄 txt（{出隊名}/ → normalize 後改名為 {id}/）（gitignore）
+│   ├── sync_drive.py      # Google Drive → data/raw/sync_meta.json
+│   ├── normalize.py       # sync_meta.json → Supabase DB + Storage
+│   ├── seed.py            # 假資料（開發測試用）
+│   └── gen_gpx.py         # 假 GPX 軌跡（配合 seed.py）
+├── data/raw/              # CI 中間產物（gitignore）
+│   ├── sync_meta.json
+│   ├── xlsx/
+│   └── txt/
+├── db/                    # 僅保留 .gitkeep（SQLite 已移除）
 ├── .github/workflows/
-│   ├── sync.yml           # 每日定時同步（待實作）
-│   └── deploy.yml         # push main 時 build & push image（待實作）
+│   └── ci.yml             # PR 驗證 + 每日同步
 ├── Dockerfile
-├── docker-compose.yml     # app + nginx + watchtower
+├── docker-compose.yml
 ├── nginx.conf
 └── requirements.txt
 ```
