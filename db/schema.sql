@@ -58,14 +58,23 @@ create table if not exists records (
 
 -- ── RLS ─────────────────────────────────────────────────────
 
-alter table expeditions        enable row level security;
+alter table expeditions         enable row level security;
 alter table expedition_counties enable row level security;
-alter table members            enable row level security;
-alter table gpx_files          enable row level security;
-alter table map_files          enable row level security;
-alter table records            enable row level security;
+alter table members             enable row level security;
+alter table gpx_files           enable row level security;
+alter table map_files           enable row level security;
+alter table records             enable row level security;
 
--- anon 只能 SELECT
+-- anon 只能 SELECT（drop 後重建，確保重複執行不報錯）
+do $$ begin
+  drop policy if exists "anon select" on expeditions;
+  drop policy if exists "anon select" on expedition_counties;
+  drop policy if exists "anon select" on members;
+  drop policy if exists "anon select" on gpx_files;
+  drop policy if exists "anon select" on map_files;
+  drop policy if exists "anon select" on records;
+end $$;
+
 create policy "anon select" on expeditions         for select to anon using (true);
 create policy "anon select" on expedition_counties for select to anon using (true);
 create policy "anon select" on members             for select to anon using (true);
@@ -94,43 +103,49 @@ returns json
 language plpgsql
 as $$
 declare
-  v_offset int := (p_page - 1) * p_page_size;
-  v_total  int;
-  v_rows   json;
+  v_offset  int  := (p_page - 1) * p_page_size;
+  v_total   int;
+  v_rows    json;
+  -- 前端無過濾條件時傳空字串，統一轉成 null
+  v_q       text   := nullif(trim(p_q),      '');
+  v_county  text   := nullif(trim(p_county), '');
+  v_start   date   := p_start;
+  v_end     date   := p_end;
+  v_counties text[] := case when cardinality(p_counties) = 0 then null else p_counties end;
 begin
   select count(*) into v_total
   from expeditions e
   where
-    (p_q is null or e.name ilike '%' || p_q || '%')
-    and (p_county is null or e.county = p_county
+    (v_q is null or e.name ilike '%' || v_q || '%')
+    and (v_county is null or e.county = v_county
          or exists (
            select 1 from expedition_counties ec
-           where ec.expedition_id = e.id and ec.county = p_county
+           where ec.expedition_id = e.id and ec.county = v_county
          ))
-    and (p_counties is null or exists (
+    and (v_counties is null or exists (
            select 1 from expedition_counties ec
-           where ec.expedition_id = e.id and ec.county = any(p_counties)
+           where ec.expedition_id = e.id and ec.county = any(v_counties)
          ))
-    and (p_start is null or e.date_start >= p_start)
-    and (p_end   is null or e.date_start <= p_end);
+    and (v_start is null or e.date_start >= v_start)
+    and (v_end   is null or e.date_start <= v_end);
 
   select json_agg(row_to_json(r)) into v_rows
   from (
     select e.*
     from expeditions e
     where
-      (p_q is null or e.name ilike '%' || p_q || '%')
-      and (p_county is null or e.county = p_county
+      (v_q is null or e.name ilike '%' || v_q || '%')
+      and (v_county is null or e.county = v_county
            or exists (
              select 1 from expedition_counties ec
-             where ec.expedition_id = e.id and ec.county = p_county
+             where ec.expedition_id = e.id and ec.county = v_county
            ))
-      and (p_counties is null or exists (
+      and (v_counties is null or exists (
              select 1 from expedition_counties ec
-             where ec.expedition_id = e.id and ec.county = any(p_counties)
+             where ec.expedition_id = e.id and ec.county = any(v_counties)
            ))
-      and (p_start is null or e.date_start >= p_start)
-      and (p_end   is null or e.date_start <= p_end)
+      and (v_start is null or e.date_start >= v_start)
+      and (v_end   is null or e.date_start <= v_end)
     order by e.date_start desc
     limit p_page_size offset v_offset
   ) r;
