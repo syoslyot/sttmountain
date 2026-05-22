@@ -176,17 +176,47 @@ def download_google_doc(service, file_id: str, dest: Path, modified_time: str | 
 
 # ── Supabase helpers ─────────────────────────────────────────
 
-def get_last_synced_at() -> datetime:
+def _supabase_client():
     url = os.environ.get("SUPABASE_URL")
     key = os.environ.get("SUPABASE_SERVICE_KEY")
     if not url or not key:
+        return None
+    return create_client(url, key)
+
+
+def get_last_synced_at() -> datetime:
+    sb = _supabase_client()
+    if not sb:
         print("  SUPABASE creds not set, using epoch as last_synced_at", file=sys.stderr)
         return datetime.fromtimestamp(0, tz=timezone.utc)
-    sb = create_client(url, key)
     row = sb.table("sync_state").select("value").eq("key", "last_synced_at").execute()
     if row.data:
         return parse_dt(row.data[0]["value"])
     return datetime.fromtimestamp(0, tz=timezone.utc)
+
+
+def _write_sync_log(synced_at: str, stats: dict):
+    sb = _supabase_client()
+    if not sb:
+        return
+    has_errors = bool(stats["errors"])
+    processed  = stats["new"] + stats["existing"]
+    status = "failed"  if has_errors and not processed else \
+             "partial" if has_errors else "success"
+    trigger = os.environ.get("GITHUB_EVENT_NAME", "local")
+    try:
+        sb.table("sync_logs").insert({
+            "synced_at":      synced_at,
+            "trigger":        trigger,
+            "status":         status,
+            "new_count":      stats["new"],
+            "existing_count": stats["existing"],
+            "skipped_count":  stats["skipped"],
+            "error_count":    len(stats["errors"]),
+            "errors":         stats["errors"],
+        }).execute()
+    except Exception as e:
+        print(f"  ⚠ 無法寫入 sync_logs：{e}", file=sys.stderr)
 
 
 # ── Folder classification ────────────────────────────────────
@@ -238,10 +268,12 @@ def sync_expedition_files(
     local_dir: str,
     last_synced_at: datetime,
     is_new: bool,
+    errors: list,
 ) -> dict:
     """
     掃描出隊資料夾內的子資料夾，下載檔案。
     回傳 {gpx_files, map_files, record_files} 各含 {drive_file_id, name, local_path}。
+    下載失敗的檔案會 append 到 errors 並跳過，不中斷整個 run。
     """
     gpx_files, map_files, record_files = [], [], []
 
@@ -261,12 +293,15 @@ def sync_expedition_files(
                 if not is_new and not (f.get("modifiedTime") and parse_dt(f["modifiedTime"]) > last_synced_at):
                     continue
                 dest = MAPS_DIR / local_dir / f["name"]
-                download_file(service, f["id"], dest, f.get("modifiedTime"))
-                map_files.append({
-                    "drive_file_id": f["id"],
-                    "name": f["name"],
-                    "local_path": str(dest),
-                })
+                try:
+                    download_file(service, f["id"], dest, f.get("modifiedTime"))
+                    map_files.append({
+                        "drive_file_id": f["id"],
+                        "name": f["name"],
+                        "local_path": str(dest),
+                    })
+                except Exception as e:
+                    errors.append({"folder": local_dir, "file": f["name"], "stage": "download_map", "message": str(e)})
 
         elif folder_name in TRACK_FOLDER_NAMES:
             for f in sub_items:
@@ -278,12 +313,15 @@ def sync_expedition_files(
                 if not is_new and not (f.get("modifiedTime") and parse_dt(f["modifiedTime"]) > last_synced_at):
                     continue
                 dest = GPX_DIR / local_dir / f["name"]
-                download_file(service, f["id"], dest, f.get("modifiedTime"))
-                gpx_files.append({
-                    "drive_file_id": f["id"],
-                    "name": f["name"],
-                    "local_path": str(dest),
-                })
+                try:
+                    download_file(service, f["id"], dest, f.get("modifiedTime"))
+                    gpx_files.append({
+                        "drive_file_id": f["id"],
+                        "name": f["name"],
+                        "local_path": str(dest),
+                    })
+                except Exception as e:
+                    errors.append({"folder": local_dir, "file": f["name"], "stage": "download_gpx", "message": str(e)})
 
         elif folder_name in RECORD_FOLDER_NAMES:
             for f in sub_items:
@@ -295,22 +333,28 @@ def sync_expedition_files(
                     continue
                 if mime == GDOC_MIME:
                     dest = TXT_DIR / local_dir / f"{f['name']}.txt"
-                    download_google_doc(service, f["id"], dest, f.get("modifiedTime"))
-                    record_files.append({
-                        "drive_file_id": f["id"],
-                        "name": f"{f['name']}.txt",
-                        "local_path": str(dest),
-                    })
+                    try:
+                        download_google_doc(service, f["id"], dest, f.get("modifiedTime"))
+                        record_files.append({
+                            "drive_file_id": f["id"],
+                            "name": f"{f['name']}.txt",
+                            "local_path": str(dest),
+                        })
+                    except Exception as e:
+                        errors.append({"folder": local_dir, "file": f["name"], "stage": "download_record", "message": str(e)})
                 elif mime == GSHEET_MIME:
                     pass  # TODO: Google Sheet 直企處理，之後補
                 elif ext in RECORD_EXTS:
                     dest = TXT_DIR / local_dir / f["name"]
-                    download_file(service, f["id"], dest, f.get("modifiedTime"))
-                    record_files.append({
-                        "drive_file_id": f["id"],
-                        "name": f["name"],
-                        "local_path": str(dest),
-                    })
+                    try:
+                        download_file(service, f["id"], dest, f.get("modifiedTime"))
+                        record_files.append({
+                            "drive_file_id": f["id"],
+                            "name": f["name"],
+                            "local_path": str(dest),
+                        })
+                    except Exception as e:
+                        errors.append({"folder": local_dir, "file": f["name"], "stage": "download_record", "message": str(e)})
 
     return {"gpx_files": gpx_files, "map_files": map_files, "record_files": record_files}
 
@@ -323,8 +367,11 @@ def build_expedition_entry(
     local_dir: str,
     last_synced_at: datetime,
     is_new: bool,
+    errors: list,
 ) -> dict:
-    """下載直企檔（xlsx/xls/gsheet/numbers）並統一轉為 xlsx，回傳 expedition entry dict。"""
+    """下載直企檔（xlsx/xls/gsheet/numbers）並統一轉為 xlsx，回傳 expedition entry dict。
+    直企下載或轉換失敗時直接 raise（caller 負責記錄到 errors）。
+    """
     zhijian_mime = zhijian["mimeType"]
     zhijian_ext  = Path(zhijian["name"]).suffix.lower()
     stem = Path(zhijian["name"]).stem or zhijian["name"]
@@ -341,7 +388,7 @@ def build_expedition_entry(
         xlsx_dest = XLSX_DIR / local_dir / zhijian["name"]
         download_file(service, zhijian["id"], xlsx_dest, zhijian.get("modifiedTime"))
 
-    files = sync_expedition_files(service, items, local_dir, last_synced_at, is_new)
+    files = sync_expedition_files(service, items, local_dir, last_synced_at, is_new, errors)
     return {
         "drive_folder_id": folder["id"],
         "name": folder["name"],
@@ -373,6 +420,7 @@ def main():
 
     solos: list[dict] = []
     groups: list[dict] = []
+    run_stats: dict = {"new": 0, "existing": 0, "skipped": 0, "errors": []}
 
     for folder in top_folders:
         created = folder.get("createdTime")
@@ -389,10 +437,20 @@ def main():
 
         if kind == "solo":
             local_dir = folder["name"]
-            entry = build_expedition_entry(
-                service, folder, items, zhijian, local_dir, last_synced_at, is_new
-            )
-            solos.append(entry)
+            try:
+                entry = build_expedition_entry(
+                    service, folder, items, zhijian, local_dir, last_synced_at, is_new,
+                    run_stats["errors"]
+                )
+                solos.append(entry)
+                run_stats["new" if is_new else "existing"] += 1
+            except Exception as e:
+                run_stats["errors"].append({
+                    "folder": folder["name"],
+                    "stage": "build",
+                    "message": str(e),
+                })
+                print(f"  ✗ {e}")
 
         elif kind == "group":
             group_entry: dict = {
@@ -406,17 +464,28 @@ def main():
                 team_is_new = bool(team_created) and parse_dt(team_created) > last_synced_at
                 local_dir = f"{folder['name']}/{team_folder['name']}"
                 print(f"  team: {team_folder['name']}")
-                team_entry = build_expedition_entry(
-                    service, team_folder, team_items, team_zhijian,
-                    local_dir, last_synced_at, team_is_new
-                )
-                group_entry["teams"].append(team_entry)
+                try:
+                    team_entry = build_expedition_entry(
+                        service, team_folder, team_items, team_zhijian,
+                        local_dir, last_synced_at, team_is_new,
+                        run_stats["errors"]
+                    )
+                    group_entry["teams"].append(team_entry)
+                    run_stats["new" if team_is_new else "existing"] += 1
+                except Exception as e:
+                    run_stats["errors"].append({
+                        "folder": local_dir,
+                        "stage": "build",
+                        "message": str(e),
+                    })
+                    print(f"  ✗ {e}")
 
             if group_entry["teams"]:
                 groups.append(group_entry)
 
         else:
             print(f"  skipped (no 直企 xlsx found)")
+            run_stats["skipped"] += 1
 
     RAW_DIR.mkdir(parents=True, exist_ok=True)
     META_PATH.write_text(json.dumps({
@@ -425,6 +494,7 @@ def main():
         "groups": groups,
     }, ensure_ascii=False, indent=2), encoding="utf-8")
 
+    _write_sync_log(synced_at, run_stats)
     print(f"\nsync complete → {META_PATH}")
 
 
