@@ -1,7 +1,5 @@
 # sttmount — 成大山協小甜甜
 
-NCKU 山協出隊資料展示平台。幹部照舊把資料上傳至 Google Drive，系統每日自動同步並更新網站，無需手動操作資料庫或伺服器。
-
 ---
 
 ## 技術棧
@@ -114,6 +112,53 @@ GitHub 開一台全新 Ubuntu 機器，安裝：
 
 ---
 
+## 系統連線關係
+
+```
+                        ┌─────────────────┐
+                        │   Google Drive  │
+                        └────────┬────────┘
+                                 │ 下載原始檔、讀取 metadata
+                                 ▼
+                    ┌────────────────────────┐
+                    │      本機後端          │
+                    │   (sttmountain         │
+                    │    sync script)        │
+                    │                        │
+                    │  .env.local 存在       │
+                    │    → dev DB / Storage  │
+                    │  .env.local 不存在     │
+                    │    → prod DB / Storage │
+                    └────────┬───────────────┘
+                             │ upsert records / upload files
+              ┌──────────────┴──────────────┐
+              │                             │
+              ▼                             ▼
+  ┌───────────────────┐         ┌───────────────────┐
+  │     dev DB        │         │     prod DB        │
+  │  (Supabase)       │         │  (Supabase)        │
+  │  dev Storage      │         │  prod Storage      │
+  └─────────┬─────────┘         └─────────┬──────────┘
+            │ 讀 DB / Storage              │ 讀 DB / Storage
+            ▼                             ▼
+  ┌───────────────────┐         ┌───────────────────┐
+  │    本機前端       │         │   Render 部署      │
+  │  (sttmountaincrazy│         │  (sttmountaincrazy │
+  │   .env.local)     │         │   Render env vars) │
+  └─────────┬─────────┘         └─────────┬──────────┘
+            │                             │
+            ▼                             ▼
+     localhost:3000               線上的網頁
+```
+
+| 情境 | 本機後端指向 | 本機前端指向 |
+|---|---|---|
+| 日常開發 | dev DB（`.env.local` 存在） | dev DB（`.env.local` 存在） |
+| 對 prod 操作 | prod DB（`.env.local` 改名為 `.env.local.dev`） | prod DB（同上） |
+| Render / 線上 | — | 永遠是 prod DB（Render env vars） |
+
+---
+
 ## 本機開發
 
 ```bash
@@ -160,7 +205,7 @@ expeditions         id, group_id, drive_folder_id (unique),
 expedition_counties id, expedition_id, county            （入山＋出山各一筆，UNIQUE）
 gpx_files           id, expedition_id, drive_file_id (unique), filename, file_path
 map_files           id, expedition_id, drive_file_id (unique), filename, file_path
-records             id, expedition_id, drive_file_id (unique), filename, content
+records             id, expedition_id, drive_file_id (unique), filename, content, file_path
 sync_state          key, value, updated_at               （存 last_synced_at）
 ```
 
@@ -171,6 +216,7 @@ sync_state          key, value, updated_at               （存 last_synced_at�
 | `gpx` | GPX / KML 軌跡檔 |
 | `maps` | 地圖 PDF / 圖片 |
 | `previews` | 出隊計畫書預覽圖（`{id}.png`） |
+| `records` | 上繳紀錄原始檔（`{expedition_id}/{safe_filename}`） |
 
 **RLS：** 所有 table 啟用，`anon` 只能 SELECT，`service_role` 有完整寫入權限。
 
