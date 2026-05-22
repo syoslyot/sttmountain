@@ -12,7 +12,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).parent))
 from normalize import supabase
 
-EXP_IDS        = [6, 7]
+KEEP_EXP_IDS   = {1, 2, 3, 4, 5}   # 保留的既有出隊
 PREV_SYNCED_AT = "2026-05-21T12:19:16.860363+00:00"
 STORAGE_BUCKETS_BY_TABLE = {
     "records":   "records",
@@ -35,20 +35,27 @@ def list_storage_paths(exp_id: int) -> dict[str, list[str]]:
 
 
 def cleanup(dry_run: bool = False) -> None:
-    rows = supabase.table("expeditions").select("id, name, group_id").in_("id", EXP_IDS).execute()
-    if not rows.data:
-        print("dev DB 中找不到 id=6, 7 的 expeditions，可能已清除過。")
+    all_rows = supabase.table("expeditions").select("id, name, group_id").execute()
+    test_rows = [r for r in all_rows.data if r["id"] not in KEEP_EXP_IDS]
+
+    if not test_rows:
+        print("dev DB 無測試資料（id > 5 的 expeditions 不存在），已是乾淨狀態。")
+        # 仍重置 sync_state
+        if not dry_run:
+            supabase.table("sync_state").update({"value": PREV_SYNCED_AT}).eq("key", "last_synced_at").execute()
+            print(f"  reset sync_state.last_synced_at → {PREV_SYNCED_AT}")
         return
 
-    group_ids = list({r["group_id"] for r in rows.data if r.get("group_id")})
+    exp_ids = [r["id"] for r in test_rows]
+    group_ids = list({r["group_id"] for r in test_rows if r.get("group_id")})
 
     print("=== 待清除項目 ===")
-    for r in rows.data:
+    for r in test_rows:
         print(f"  expedition id={r['id']}  name={r['name']}  group_id={r['group_id']}")
 
     # Storage 檔案
     all_storage: dict[str, list[str]] = {}
-    for exp_id in EXP_IDS:
+    for exp_id in exp_ids:
         for bucket, paths in list_storage_paths(exp_id).items():
             all_storage.setdefault(bucket, []).extend(paths)
 
@@ -70,12 +77,12 @@ def cleanup(dry_run: bool = False) -> None:
 
     # 刪 DB children
     for table in STORAGE_BUCKETS_BY_TABLE:
-        supabase.table(table).delete().in_("expedition_id", EXP_IDS).execute()
-    supabase.table("expedition_counties").delete().in_("expedition_id", EXP_IDS).execute()
+        supabase.table(table).delete().in_("expedition_id", exp_ids).execute()
+    supabase.table("expedition_counties").delete().in_("expedition_id", exp_ids).execute()
 
     # 刪 expeditions
-    supabase.table("expeditions").delete().in_("id", EXP_IDS).execute()
-    print(f"  deleted expeditions: {EXP_IDS}")
+    supabase.table("expeditions").delete().in_("id", exp_ids).execute()
+    print(f"  deleted expeditions: {exp_ids}")
 
     # 刪孤立 expedition_groups
     for gid in group_ids:
