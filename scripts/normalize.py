@@ -11,6 +11,7 @@
 """
 
 import hashlib
+import io
 import json
 import os
 import re
@@ -444,9 +445,39 @@ def update_last_synced_at(synced_at: str):
     ).execute()
 
 
+def _append_normalize_log(log_text: str):
+    try:
+        row = supabase.table("sync_logs").select("id, log_text").order("id", desc=True).limit(1).execute()
+        if not row.data:
+            return
+        existing = row.data[0].get("log_text") or ""
+        supabase.table("sync_logs").update({
+            "log_text": existing + "\n[normalize]\n" + log_text,
+        }).eq("id", row.data[0]["id"]).execute()
+    except Exception as e:
+        print(f"  ⚠ 無法更新 sync_logs：{e}", file=sys.stderr)
+
+
+class _Tee:
+    def __init__(self, real):
+        self._real = real
+        self._buf = io.StringIO()
+    def write(self, s):
+        self._real.write(s)
+        self._buf.write(s)
+    def flush(self):
+        self._real.flush()
+    def getvalue(self) -> str:
+        return self._buf.getvalue()
+
+
 def main():
+    _tee = _Tee(sys.stdout)
+    sys.stdout = _tee
+
     meta_path = Path(sys.argv[1]) if len(sys.argv) >= 2 else META_PATH
     if not meta_path.exists():
+        sys.stdout = _tee._real
         print(f"sync_meta.json 不存在：{meta_path}", file=sys.stderr)
         sys.exit(1)
 
@@ -472,6 +503,9 @@ def main():
 
     update_last_synced_at(meta["synced_at"])
     print(f"\nnormalize complete, last_synced_at → {meta['synced_at']}")
+
+    sys.stdout = _tee._real
+    _append_normalize_log(_tee.getvalue())
 
 
 if __name__ == "__main__":
