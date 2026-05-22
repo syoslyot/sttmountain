@@ -55,7 +55,7 @@ MAP_FOLDER_NAMES    = {"地圖"}
 TRACK_FOLDER_NAMES  = {"航跡"}
 RECORD_FOLDER_NAMES = {"上繳紀錄"}
 
-EXCEL_EXTS  = {".xlsx", ".xls"}
+ZHIJIAN_EXTS = {".xlsx", ".xls", ".numbers"}
 GPX_EXTS    = {".gpx", ".kml"}
 MAP_EXTS    = {".pdf", ".docx", ".jpg", ".jpeg", ".png"}
 RECORD_EXTS = {".txt", ".md", ".docx", ".pdf"}
@@ -119,6 +119,48 @@ def download_file(service, file_id: str, dest: Path, modified_time: str | None =
     print(f"  downloaded: {dest.name}")
 
 
+def download_google_sheet_as_xlsx(service, file_id: str, dest: Path, modified_time: str | None = None) -> Path:
+    dest = dest.with_suffix(".xlsx")
+    dest.parent.mkdir(parents=True, exist_ok=True)
+    if not _drive_newer(modified_time, dest):
+        return dest
+    request = service.files().export_media(
+        fileId=file_id,
+        mimeType="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+    )
+    with io.FileIO(dest, "wb") as fh:
+        downloader = MediaIoBaseDownload(fh, request)
+        done = False
+        while not done:
+            _, done = downloader.next_chunk()
+    print(f"  downloaded (gsheet→xlsx): {dest.name}")
+    return dest
+
+
+def convert_numbers_to_xlsx(src: Path) -> Path:
+    import numbers_parser
+    import openpyxl as xl
+
+    dest = src.with_suffix(".xlsx")
+    doc = numbers_parser.Document(str(src))
+    wb = xl.Workbook()
+    wb.remove(wb.active)
+
+    for sheet in doc.sheets:
+        ws = wb.create_sheet(title=sheet.name)
+        row_offset = 0
+        for table in sheet.tables:
+            for cell in table.iter_rows():
+                for c in cell:
+                    if c.value is not None:
+                        ws.cell(row=row_offset + c.row + 1, column=c.col + 1, value=c.value)
+            row_offset += table.num_rows + 1
+
+    wb.save(dest)
+    print(f"  converted (numbers→xlsx): {dest.name}")
+    return dest
+
+
 def download_google_doc(service, file_id: str, dest: Path, modified_time: str | None = None):
     dest.parent.mkdir(parents=True, exist_ok=True)
     if not _drive_newer(modified_time, dest):
@@ -149,12 +191,16 @@ def get_last_synced_at() -> datetime:
 
 # ── Folder classification ────────────────────────────────────
 
-def find_zhijian_xlsx(items: list[dict]) -> dict | None:
-    """在直接子項目中找含「直企」的 xlsx 檔。"""
+def find_zhijian_file(items: list[dict]) -> dict | None:
+    """在直接子項目中找含「直企」的 xlsx/xls/numbers/gsheet 檔。"""
     for item in items:
         if is_folder(item):
             continue
-        if "直企" in item["name"] and Path(item["name"]).suffix.lower() in EXCEL_EXTS:
+        if "直企" not in item["name"]:
+            continue
+        if item["mimeType"] == GSHEET_MIME:
+            return item
+        if Path(item["name"]).suffix.lower() in ZHIJIAN_EXTS:
             return item
     return None
 
@@ -165,7 +211,7 @@ def classify_top_folder(service, folder: dict) -> tuple[str, list[dict], dict | 
     kind: 'solo' | 'group' | 'skip'
     """
     items = list_folder(service, folder["id"])
-    zhijian = find_zhijian_xlsx(items)
+    zhijian = find_zhijian_file(items)
     if zhijian:
         return "solo", items, zhijian, []
 
@@ -174,7 +220,7 @@ def classify_top_folder(service, folder: dict) -> tuple[str, list[dict], dict | 
         if not is_folder(item):
             continue
         sub_items = list_folder(service, item["id"])
-        sub_zhijian = find_zhijian_xlsx(sub_items)
+        sub_zhijian = find_zhijian_file(sub_items)
         if sub_zhijian:
             team_entries.append((item, sub_items, sub_zhijian))
 
@@ -278,9 +324,22 @@ def build_expedition_entry(
     last_synced_at: datetime,
     is_new: bool,
 ) -> dict:
-    """下載直企 xlsx 和靜態檔，回傳 expedition entry dict。"""
-    xlsx_dest = XLSX_DIR / local_dir / zhijian["name"]
-    download_file(service, zhijian["id"], xlsx_dest, zhijian.get("modifiedTime"))
+    """下載直企檔（xlsx/xls/gsheet/numbers）並統一轉為 xlsx，回傳 expedition entry dict。"""
+    zhijian_mime = zhijian["mimeType"]
+    zhijian_ext  = Path(zhijian["name"]).suffix.lower()
+    stem = Path(zhijian["name"]).stem or zhijian["name"]
+
+    if zhijian_mime == GSHEET_MIME:
+        xlsx_dest = download_google_sheet_as_xlsx(
+            service, zhijian["id"], XLSX_DIR / local_dir / f"{stem}.xlsx", zhijian.get("modifiedTime")
+        )
+    elif zhijian_ext == ".numbers":
+        numbers_dest = XLSX_DIR / local_dir / zhijian["name"]
+        download_file(service, zhijian["id"], numbers_dest, zhijian.get("modifiedTime"))
+        xlsx_dest = convert_numbers_to_xlsx(numbers_dest)
+    else:
+        xlsx_dest = XLSX_DIR / local_dir / zhijian["name"]
+        download_file(service, zhijian["id"], xlsx_dest, zhijian.get("modifiedTime"))
 
     files = sync_expedition_files(service, items, local_dir, last_synced_at, is_new)
     return {
