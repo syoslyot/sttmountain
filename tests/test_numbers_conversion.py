@@ -15,7 +15,7 @@ import pytest
 from pathlib import Path
 from PIL import Image
 
-SAMPLE = Path(__file__).parent / "fixtures/sample.numbers"
+SAMPLE = Path(__file__).parent / "fixtures/20260321_白雪村採樟腦（水山線）_直企 .numbers"
 
 
 @pytest.fixture(scope="module")
@@ -25,7 +25,7 @@ def sd():
     return sync_drive
 
 
-@pytest.mark.skipif(not SAMPLE.exists(), reason="需要 tests/fixtures/sample.numbers")
+@pytest.mark.skipif(not SAMPLE.exists(), reason="需要 tests/fixtures/ 的 .numbers 檔")
 @pytest.mark.timeout(60)
 def test_numbers_produces_xlsx(sd, tmp_path):
     src = tmp_path / "sample.numbers"
@@ -36,7 +36,7 @@ def test_numbers_produces_xlsx(sd, tmp_path):
     assert result.suffix.lower() == ".xlsx"
 
 
-@pytest.mark.skipif(not SAMPLE.exists(), reason="需要 tests/fixtures/sample.numbers")
+@pytest.mark.skipif(not SAMPLE.exists(), reason="需要 tests/fixtures/ 的 .numbers 檔")
 @pytest.mark.timeout(60)
 def test_numbers_xlsx_has_p1_sheet(sd, tmp_path):
     src = tmp_path / "sample.numbers"
@@ -49,7 +49,7 @@ def test_numbers_xlsx_has_p1_sheet(sd, tmp_path):
     assert found, f"找不到 P1 sheet，實際 sheets：{wb.sheetnames}"
 
 
-@pytest.mark.skipif(not SAMPLE.exists(), reason="需要 tests/fixtures/sample.numbers")
+@pytest.mark.skipif(not SAMPLE.exists(), reason="需要 tests/fixtures/ 的 .numbers 檔")
 @pytest.mark.timeout(120)
 def test_numbers_capture_p1(sd, nm, tmp_path):
     """端對端：numbers → xlsx → capture_sheet → PNG"""
