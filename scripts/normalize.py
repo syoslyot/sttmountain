@@ -11,6 +11,7 @@
 """
 
 import hashlib
+import io
 import json
 import os
 import re
@@ -415,9 +416,7 @@ def process_expedition(entry: dict, group_id: int):
         return
 
     fields = parse_p1(wb[p1_name])
-    if not fields["name"]:
-        print(f"  ⚠ 無法取得出隊名稱，跳過")
-        return
+    fields["name"] = entry["name"]
     if not fields["date_start"]:
         print(f"  ⚠ 無法解析 date_start，跳過")
         return
@@ -433,10 +432,10 @@ def process_expedition(entry: dict, group_id: int):
     process_record_files(exp_id, entry.get("record_files", []))
 
     if is_new:
-        print(f"  ✓ 新增：{fields['name']}（id={exp_id}）")
+        print(f"  ✓ 新增：{entry['name']}（id={exp_id}）")
         generate_and_upload_preview(xlsx_path, exp_id)
     else:
-        print(f"  → 更新檔案：{fields['name']}（id={exp_id}）")
+        print(f"  → 更新檔案：{entry['name']}（id={exp_id}）")
 
 
 def update_last_synced_at(synced_at: str):
@@ -446,9 +445,39 @@ def update_last_synced_at(synced_at: str):
     ).execute()
 
 
+def _append_normalize_log(log_text: str):
+    try:
+        row = supabase.table("sync_logs").select("id, log_text").order("id", desc=True).limit(1).execute()
+        if not row.data:
+            return
+        existing = row.data[0].get("log_text") or ""
+        supabase.table("sync_logs").update({
+            "log_text": existing + "\n[normalize]\n" + log_text,
+        }).eq("id", row.data[0]["id"]).execute()
+    except Exception as e:
+        print(f"  ⚠ 無法更新 sync_logs：{e}", file=sys.stderr)
+
+
+class _Tee:
+    def __init__(self, real):
+        self._real = real
+        self._buf = io.StringIO()
+    def write(self, s):
+        self._real.write(s)
+        self._buf.write(s)
+    def flush(self):
+        self._real.flush()
+    def getvalue(self) -> str:
+        return self._buf.getvalue()
+
+
 def main():
+    _tee = _Tee(sys.stdout)
+    sys.stdout = _tee
+
     meta_path = Path(sys.argv[1]) if len(sys.argv) >= 2 else META_PATH
     if not meta_path.exists():
+        sys.stdout = _tee._real
         print(f"sync_meta.json 不存在：{meta_path}", file=sys.stderr)
         sys.exit(1)
 
@@ -474,6 +503,9 @@ def main():
 
     update_last_synced_at(meta["synced_at"])
     print(f"\nnormalize complete, last_synced_at → {meta['synced_at']}")
+
+    sys.stdout = _tee._real
+    _append_normalize_log(_tee.getvalue())
 
 
 if __name__ == "__main__":
