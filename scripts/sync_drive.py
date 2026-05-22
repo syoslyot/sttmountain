@@ -195,7 +195,7 @@ def get_last_synced_at() -> datetime:
     return datetime.fromtimestamp(0, tz=timezone.utc)
 
 
-def _write_sync_log(synced_at: str, stats: dict):
+def _write_sync_log(synced_at: str, stats: dict, log_text: str = ""):
     sb = _supabase_client()
     if not sb:
         return
@@ -214,6 +214,7 @@ def _write_sync_log(synced_at: str, stats: dict):
             "skipped_count":  stats["skipped"],
             "error_count":    len(stats["errors"]),
             "errors":         stats["errors"],
+            "log_text":       log_text,
         }).execute()
     except Exception as e:
         print(f"  ⚠ 無法寫入 sync_logs：{e}", file=sys.stderr)
@@ -404,11 +405,27 @@ def build_expedition_entry(
 
 # ── Main ─────────────────────────────────────────────────────
 
+class _Tee:
+    def __init__(self, real):
+        self._real = real
+        self._buf = io.StringIO()
+    def write(self, s):
+        self._real.write(s)
+        self._buf.write(s)
+    def flush(self):
+        self._real.flush()
+    def getvalue(self) -> str:
+        return self._buf.getvalue()
+
+
 def main():
     root_id = os.environ.get("GDRIVE_ROOT_FOLDER_ID")
     if not root_id:
         print("GDRIVE_ROOT_FOLDER_ID not set", file=sys.stderr)
         sys.exit(1)
+
+    _tee = _Tee(sys.stdout)
+    sys.stdout = _tee
 
     service = build_service()
     last_synced_at = get_last_synced_at()
@@ -494,7 +511,8 @@ def main():
         "groups": groups,
     }, ensure_ascii=False, indent=2), encoding="utf-8")
 
-    _write_sync_log(synced_at, run_stats)
+    sys.stdout = _tee._real
+    _write_sync_log(synced_at, run_stats, log_text=_tee.getvalue())
     print(f"\nsync complete → {META_PATH}")
 
 
