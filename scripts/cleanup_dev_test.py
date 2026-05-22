@@ -12,7 +12,6 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).parent))
 from normalize import supabase
 
-PREV_SYNCED_AT = "2026-05-21T12:19:16.860363+00:00"
 STORAGE_BUCKETS_BY_TABLE = {
     "records":   "records",
     "gpx_files": "gpx",
@@ -42,8 +41,7 @@ def cleanup(dry_run: bool = False) -> None:
             supabase.table("sync_logs").delete().neq("id", 0).execute()
             print("  cleared sync_logs")
             supabase.table("sync_state").delete().neq("key", "").execute()
-            supabase.table("sync_state").insert({"key": "last_synced_at", "value": PREV_SYNCED_AT}).execute()
-            print(f"  reset sync_state.last_synced_at → {PREV_SYNCED_AT}")
+            print("  cleared sync_state")
         return
 
     exp_ids = [r["id"] for r in all_rows.data]
@@ -64,8 +62,8 @@ def cleanup(dry_run: bool = False) -> None:
         for p in paths:
             print(f"  {bucket}/{p}")
 
-    print(f"\n=== sync_state.last_synced_at → {PREV_SYNCED_AT} ===")
-    print("=== sync_logs → 清空 ===")
+    print("\n=== sync_logs, sync_state → 清空 ===")
+
 
     if dry_run:
         print("\n[dry-run] 不執行任何刪除")
@@ -90,14 +88,10 @@ def cleanup(dry_run: bool = False) -> None:
         supabase.table("expedition_groups").delete().eq("id", gid).execute()
     print(f"  deleted expedition_groups: {group_ids}")
 
-    # 清空 sync_logs
+    # 清空 sync_logs, sync_state
     supabase.table("sync_logs").delete().neq("id", 0).execute()
-    print("  cleared sync_logs")
-
-    # 重置 sync_state（刪除所有 row 後重新插入）
     supabase.table("sync_state").delete().neq("key", "").execute()
-    supabase.table("sync_state").insert({"key": "last_synced_at", "value": PREV_SYNCED_AT}).execute()
-    print(f"  reset sync_state.last_synced_at → {PREV_SYNCED_AT}")
+    print("  cleared sync_logs, sync_state")
 
     print("\n清除完成")
 
