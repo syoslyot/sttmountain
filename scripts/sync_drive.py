@@ -40,7 +40,7 @@ load_dotenv('.env.local', override=True)
 
 # ── 常數 ────────────────────────────────────────────────────
 
-IMPORT_CUTOFF_DATE = date(2026, 5, 1)
+IMPORT_CUTOFF_DATE = date(2026, 5, 15)
 
 SCOPES = ["https://www.googleapis.com/auth/drive.readonly"]
 
