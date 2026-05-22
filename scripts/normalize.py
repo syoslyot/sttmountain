@@ -66,6 +66,8 @@ CONTENT_TYPE_MAP = {
     ".png":  "image/png",
     ".gpx":  "application/gpx+xml",
     ".kml":  "application/vnd.google-earth.kml+xml",
+    ".txt":  "text/plain; charset=utf-8",
+    ".md":   "text/markdown; charset=utf-8",
 }
 
 
@@ -352,8 +354,12 @@ def process_record_files(expedition_id: int, file_entries: list[dict]):
             doc.close()
         else:
             content = local.read_text(encoding="utf-8", errors="replace")
+        safe = storage_safe_name(f["name"])
+        storage_path = f"{expedition_id}/{safe}"
+        content_type = CONTENT_TYPE_MAP.get(ext, "application/octet-stream")
+        storage_upload("records", storage_path, local, content_type)
         sync_file_record("records", expedition_id, f["drive_file_id"],
-                         f["name"], {"content": content})
+                         f["name"], {"content": content, "file_path": storage_path})
 
 
 # ── 截圖與上傳 ───────────────────────────────────────────────
