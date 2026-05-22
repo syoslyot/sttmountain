@@ -51,7 +51,11 @@ def backfill(dry_run: bool = False) -> None:
             dest = tmp / safe
             try:
                 download_file(service, drive_id, dest)
-                storage_upload("records", storage_path, dest, content_type)
+                data = dest.read_bytes()
+                supabase.storage.from_("records").upload(
+                    storage_path, data,
+                    file_options={"content-type": content_type, "upsert": "true"},
+                )
                 supabase.table("records") \
                     .update({"file_path": storage_path}) \
                     .eq("id", rec_id) \
