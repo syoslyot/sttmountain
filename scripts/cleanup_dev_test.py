@@ -1,5 +1,5 @@
 """
-清除 dev DB / Storage 的測試資料，並重置 sync_state.last_synced_at。
+清空 dev DB 所有出隊資料、Storage 檔案，並重置 sync_state.last_synced_at。
 
 用法：
   python scripts/cleanup_dev_test.py            # 實際執行
@@ -12,8 +12,6 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).parent))
 from normalize import supabase
 
-KEEP_EXP_IDS   = {1, 2, 3, 4, 5}   # 保留的既有出隊
-PREV_SYNCED_AT = "2026-05-21T12:19:16.860363+00:00"
 STORAGE_BUCKETS_BY_TABLE = {
     "records":   "records",
     "gpx_files": "gpx",
@@ -36,21 +34,21 @@ def list_storage_paths(exp_id: int) -> dict[str, list[str]]:
 
 def cleanup(dry_run: bool = False) -> None:
     all_rows = supabase.table("expeditions").select("id, name, group_id").execute()
-    test_rows = [r for r in all_rows.data if r["id"] not in KEEP_EXP_IDS]
 
-    if not test_rows:
-        print("dev DB 無測試資料（id > 5 的 expeditions 不存在），已是乾淨狀態。")
-        # 仍重置 sync_state
+    if not all_rows.data:
+        print("dev DB expeditions 已是空的。")
         if not dry_run:
-            supabase.table("sync_state").update({"value": PREV_SYNCED_AT}).eq("key", "last_synced_at").execute()
-            print(f"  reset sync_state.last_synced_at → {PREV_SYNCED_AT}")
+            supabase.table("sync_logs").delete().neq("id", 0).execute()
+            print("  cleared sync_logs")
+            supabase.table("sync_state").delete().neq("key", "").execute()
+            print("  cleared sync_state")
         return
 
-    exp_ids = [r["id"] for r in test_rows]
-    group_ids = list({r["group_id"] for r in test_rows if r.get("group_id")})
+    exp_ids = [r["id"] for r in all_rows.data]
+    group_ids = list({r["group_id"] for r in all_rows.data if r.get("group_id")})
 
     print("=== 待清除項目 ===")
-    for r in test_rows:
+    for r in all_rows.data:
         print(f"  expedition id={r['id']}  name={r['name']}  group_id={r['group_id']}")
 
     # Storage 檔案
@@ -64,7 +62,8 @@ def cleanup(dry_run: bool = False) -> None:
         for p in paths:
             print(f"  {bucket}/{p}")
 
-    print(f"\n=== sync_state.last_synced_at → {PREV_SYNCED_AT} ===")
+    print("\n=== sync_logs, sync_state → 清空 ===")
+
 
     if dry_run:
         print("\n[dry-run] 不執行任何刪除")
@@ -84,16 +83,15 @@ def cleanup(dry_run: bool = False) -> None:
     supabase.table("expeditions").delete().in_("id", exp_ids).execute()
     print(f"  deleted expeditions: {exp_ids}")
 
-    # 刪孤立 expedition_groups
+    # 刪所有 expedition_groups
     for gid in group_ids:
-        remaining = supabase.table("expeditions").select("id").eq("group_id", gid).execute()
-        if not remaining.data:
-            supabase.table("expedition_groups").delete().eq("id", gid).execute()
-            print(f"  deleted orphan expedition_group id={gid}")
+        supabase.table("expedition_groups").delete().eq("id", gid).execute()
+    print(f"  deleted expedition_groups: {group_ids}")
 
-    # 重置 sync_state
-    supabase.table("sync_state").update({"value": PREV_SYNCED_AT}).eq("key", "last_synced_at").execute()
-    print(f"  reset sync_state.last_synced_at → {PREV_SYNCED_AT}")
+    # 清空 sync_logs, sync_state
+    supabase.table("sync_logs").delete().neq("id", 0).execute()
+    supabase.table("sync_state").delete().neq("key", "").execute()
+    print("  cleared sync_logs, sync_state")
 
     print("\n清除完成")
 
