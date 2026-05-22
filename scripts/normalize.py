@@ -415,9 +415,7 @@ def process_expedition(entry: dict, group_id: int):
         return
 
     fields = parse_p1(wb[p1_name])
-    if not fields["name"]:
-        print(f"  ⚠ 無法取得出隊名稱，跳過")
-        return
+    fields["name"] = entry["name"]
     if not fields["date_start"]:
         print(f"  ⚠ 無法解析 date_start，跳過")
         return
@@ -433,10 +431,10 @@ def process_expedition(entry: dict, group_id: int):
     process_record_files(exp_id, entry.get("record_files", []))
 
     if is_new:
-        print(f"  ✓ 新增：{fields['name']}（id={exp_id}）")
+        print(f"  ✓ 新增：{entry['name']}（id={exp_id}）")
         generate_and_upload_preview(xlsx_path, exp_id)
     else:
-        print(f"  → 更新檔案：{fields['name']}（id={exp_id}）")
+        print(f"  → 更新檔案：{entry['name']}（id={exp_id}）")
 
 
 def update_last_synced_at(synced_at: str):
