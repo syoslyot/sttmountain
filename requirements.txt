@@ -13,3 +13,4 @@ Pillow==11.2.1
 
 supabase==2.15.2
 python-dotenv==1.1.0
+numbers-parser==4.14.2
