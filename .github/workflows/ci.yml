@@ -62,14 +62,14 @@ jobs:
         env:
           GDRIVE_CREDENTIALS_JSON: ${{ secrets.GDRIVE_CREDENTIALS_JSON }}
           GDRIVE_ROOT_FOLDER_ID: ${{ secrets.GDRIVE_ROOT_FOLDER_ID }}
-          SUPABASE_URL: ${{ inputs.target_db == 'dev' && secrets.SUPABASE_URL_DEV || secrets.SUPABASE_URL }}
-          SUPABASE_SERVICE_KEY: ${{ inputs.target_db == 'dev' && secrets.SUPABASE_SERVICE_KEY_DEV || secrets.SUPABASE_SERVICE_KEY }}
+          SUPABASE_URL: ${{ (github.event_name == 'schedule' || inputs.target_db == 'dev') && secrets.SUPABASE_URL_DEV || secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_KEY: ${{ (github.event_name == 'schedule' || inputs.target_db == 'dev') && secrets.SUPABASE_SERVICE_KEY_DEV || secrets.SUPABASE_SERVICE_KEY }}
         run: python3 scripts/sync_drive.py
 
       - name: Normalize and upload to Supabase
         env:
-          SUPABASE_URL: ${{ inputs.target_db == 'dev' && secrets.SUPABASE_URL_DEV || secrets.SUPABASE_URL }}
-          SUPABASE_SERVICE_KEY: ${{ inputs.target_db == 'dev' && secrets.SUPABASE_SERVICE_KEY_DEV || secrets.SUPABASE_SERVICE_KEY }}
+          SUPABASE_URL: ${{ (github.event_name == 'schedule' || inputs.target_db == 'dev') && secrets.SUPABASE_URL_DEV || secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_KEY: ${{ (github.event_name == 'schedule' || inputs.target_db == 'dev') && secrets.SUPABASE_SERVICE_KEY_DEV || secrets.SUPABASE_SERVICE_KEY }}
         run: python3 scripts/normalize.py
 
   # Docker image build + push to GHCR
