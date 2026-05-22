@@ -4,6 +4,15 @@ on:
   schedule:
     - cron: '0 13 * * *'   # 每天 UTC 13:00（台灣時間 21:00）
   workflow_dispatch:        # 手動觸發
+    inputs:
+      target_db:
+        description: '目標資料庫（dev / prod）'
+        required: false
+        default: 'prod'
+        type: choice
+        options:
+          - prod
+          - dev
   push:
     branches: [main]       # push main 時 build image
   pull_request:
@@ -53,12 +62,14 @@ jobs:
         env:
           GDRIVE_CREDENTIALS_JSON: ${{ secrets.GDRIVE_CREDENTIALS_JSON }}
           GDRIVE_ROOT_FOLDER_ID: ${{ secrets.GDRIVE_ROOT_FOLDER_ID }}
+          SUPABASE_URL: ${{ inputs.target_db == 'dev' && secrets.SUPABASE_URL_DEV || secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_KEY: ${{ inputs.target_db == 'dev' && secrets.SUPABASE_SERVICE_KEY_DEV || secrets.SUPABASE_SERVICE_KEY }}
         run: python3 scripts/sync_drive.py
 
       - name: Normalize and upload to Supabase
         env:
-          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
-          SUPABASE_SERVICE_KEY: ${{ secrets.SUPABASE_SERVICE_KEY }}
+          SUPABASE_URL: ${{ inputs.target_db == 'dev' && secrets.SUPABASE_URL_DEV || secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_KEY: ${{ inputs.target_db == 'dev' && secrets.SUPABASE_SERVICE_KEY_DEV || secrets.SUPABASE_SERVICE_KEY }}
         run: python3 scripts/normalize.py
 
   # Docker image build + push to GHCR
