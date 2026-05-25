@@ -30,7 +30,7 @@ from dotenv import load_dotenv
 from supabase import create_client, Client
 
 load_dotenv()
-load_dotenv('.env.local', override=True)
+load_dotenv(os.environ.get("ENV_FILE", ".env.local"), override=True)
 
 SUPABASE_URL = os.environ["SUPABASE_URL"]
 SUPABASE_KEY = os.environ["SUPABASE_SERVICE_KEY"]
