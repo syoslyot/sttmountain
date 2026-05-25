@@ -195,6 +195,11 @@ uvicorn app.main:app --reload
 
 ## DB Schema（Supabase PostgreSQL）
 
+DB schema and migration workflow are documented in [`docs/database.md`](docs/database.md).
+`sttmountain` is the source of truth for Supabase SQL. Frontend projects such as
+`sttmountaincrazy` should depend on the RPC contract here, not keep their own SQL
+copies.
+
 ```
 expedition_groups   id, name, drive_folder_id (unique), created_at
 expeditions         id, group_id, drive_folder_id (unique),
@@ -208,6 +213,7 @@ map_files           id, expedition_id, drive_file_id (unique), filename, file_pa
 records             id, expedition_id, drive_file_id (unique), filename, content, file_path
 sync_state          key, value, updated_at               （存 last_synced_at）
 sync_logs           synced_at, trigger, status, counts, errors, log_text
+schema_migrations   version, applied_at                  （記錄已套用的 migration）
 ```
 
 **Storage Buckets（Public）：**
