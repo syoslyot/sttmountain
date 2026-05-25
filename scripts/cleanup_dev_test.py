@@ -1,103 +1,188 @@
 """
-清空 dev DB 所有出隊資料、Storage 檔案，並重置 sync_state.last_synced_at。
+Reset Supabase expedition data and storage before a full Google Drive resync.
 
-用法：
-  python scripts/cleanup_dev_test.py            # 實際執行
-  python scripts/cleanup_dev_test.py --dry-run  # 只列出待清除項目，不寫入
+Usage:
+  python3 scripts/cleanup_dev_test.py --dry-run
+  python3 scripts/cleanup_dev_test.py --yes --target dev
+  python3 scripts/cleanup_dev_test.py --yes --target prod
+
+Environment:
+  SUPABASE_URL
+  SUPABASE_SERVICE_KEY
 """
+
+from __future__ import annotations
+
 import argparse
+import os
+import shutil
 import sys
 from pathlib import Path
 
-sys.path.insert(0, str(Path(__file__).parent))
-from normalize import supabase
+from dotenv import load_dotenv
+from supabase import create_client
 
-STORAGE_BUCKETS_BY_TABLE = {
-    "records":   "records",
-    "gpx_files": "gpx",
-    "map_files":  "maps",
-}
+EPOCH = "1970-01-01T00:00:00+00:00"
+DATA_TABLES = [
+    "records",
+    "map_files",
+    "gpx_files",
+    "expedition_counties",
+    "expeditions",
+    "expedition_groups",
+]
+STORAGE_BUCKETS = ["records", "maps", "gpx", "previews"]
+LOCAL_CACHE_DIRS = [
+    Path("data/raw/xlsx"),
+    Path("data/raw/txt"),
+    Path("app/static/gpx"),
+    Path("app/static/maps"),
+    Path("app/static/previews"),
+]
 
 
-def list_storage_paths(exp_id: int) -> dict[str, list[str]]:
-    result: dict[str, list[str]] = {}
-    for table, bucket in STORAGE_BUCKETS_BY_TABLE.items():
-        rows = supabase.table(table).select("file_path").eq("expedition_id", exp_id).execute()
-        paths = [r["file_path"] for r in rows.data if r.get("file_path")]
-        if paths:
-            result[bucket] = paths
-    exp = supabase.table("expeditions").select("preview_image").eq("id", exp_id).execute()
-    if exp.data and exp.data[0].get("preview_image"):
-        result.setdefault("previews", []).append(exp.data[0]["preview_image"])
-    return result
+def env_project_ref(url: str) -> str:
+    return url.removeprefix("https://").split(".")[0]
 
 
-def cleanup(dry_run: bool = False) -> None:
-    all_rows = supabase.table("expeditions").select("id, name, group_id").execute()
+def load_env(env_file: str) -> None:
+    load_dotenv()
+    load_dotenv(env_file, override=True)
 
-    if not all_rows.data:
-        print("dev DB expeditions 已是空的。")
-        if not dry_run:
-            supabase.table("sync_logs").delete().neq("id", 0).execute()
-            print("  cleared sync_logs")
-            supabase.table("sync_state").delete().neq("key", "").execute()
-            print("  cleared sync_state")
+
+def require_client():
+    url = os.environ.get("SUPABASE_URL")
+    key = os.environ.get("SUPABASE_SERVICE_KEY")
+    if not url or not key:
+        raise RuntimeError("SUPABASE_URL and SUPABASE_SERVICE_KEY are required")
+    return create_client(url, key), url
+
+
+def count_table(sb, table: str) -> int:
+    res = sb.table(table).select("*", count="exact").limit(0).execute()
+    return res.count or 0
+
+
+def clear_table(sb, table: str, dry_run: bool) -> None:
+    count = count_table(sb, table)
+    print(f"  {table}: {count} rows")
+    if dry_run or count == 0:
         return
-
-    exp_ids = [r["id"] for r in all_rows.data]
-    group_ids = list({r["group_id"] for r in all_rows.data if r.get("group_id")})
-
-    print("=== 待清除項目 ===")
-    for r in all_rows.data:
-        print(f"  expedition id={r['id']}  name={r['name']}  group_id={r['group_id']}")
-
-    # Storage 檔案
-    all_storage: dict[str, list[str]] = {}
-    for exp_id in exp_ids:
-        for bucket, paths in list_storage_paths(exp_id).items():
-            all_storage.setdefault(bucket, []).extend(paths)
-
-    print("\n=== Storage 檔案 ===")
-    for bucket, paths in all_storage.items():
-        for p in paths:
-            print(f"  {bucket}/{p}")
-
-    print("\n=== sync_logs, sync_state → 清空 ===")
+    if table == "sync_state":
+        sb.table(table).delete().neq("key", "").execute()
+    else:
+        sb.table(table).delete().gt("id", 0).execute()
 
 
+def list_bucket_paths(storage, bucket: str, prefix: str = "") -> list[str]:
+    try:
+        items = storage.from_(bucket).list(prefix)
+    except Exception as e:
+        print(f"  {bucket}: cannot list ({e})")
+        return []
+
+    paths: list[str] = []
+    for item in items:
+        name = item.get("name")
+        if not name:
+            continue
+        path = f"{prefix}/{name}" if prefix else name
+        if item.get("id") is None:
+            paths.extend(list_bucket_paths(storage, bucket, path))
+        else:
+            paths.append(path)
+    return paths
+
+
+def remove_bucket_paths(storage, bucket: str, paths: list[str], dry_run: bool) -> None:
+    print(f"  {bucket}: {len(paths)} objects")
     if dry_run:
-        print("\n[dry-run] 不執行任何刪除")
         return
+    for i in range(0, len(paths), 100):
+        chunk = paths[i:i + 100]
+        if chunk:
+            storage.from_(bucket).remove(chunk)
 
-    # 刪 Storage
-    for bucket, paths in all_storage.items():
-        supabase.storage.from_(bucket).remove(paths)
-        print(f"  deleted storage {bucket}: {len(paths)} 個檔案")
 
-    # 刪 DB children
-    for table in STORAGE_BUCKETS_BY_TABLE:
-        supabase.table(table).delete().in_("expedition_id", exp_ids).execute()
-    supabase.table("expedition_counties").delete().in_("expedition_id", exp_ids).execute()
+def clear_local_cache(dry_run: bool) -> None:
+    print("\n=== Local cache ===")
+    for base in LOCAL_CACHE_DIRS:
+        if not base.exists():
+            print(f"  {base}: missing")
+            continue
+        paths = [p for p in base.iterdir() if p.name != ".gitkeep"]
+        print(f"  {base}: {len(paths)} entries")
+        if dry_run:
+            continue
+        for path in paths:
+            if path.is_dir():
+                shutil.rmtree(path)
+            else:
+                path.unlink()
 
-    # 刪 expeditions
-    supabase.table("expeditions").delete().in_("id", exp_ids).execute()
-    print(f"  deleted expeditions: {exp_ids}")
 
-    # 刪所有 expedition_groups
-    for gid in group_ids:
-        supabase.table("expedition_groups").delete().eq("id", gid).execute()
-    print(f"  deleted expedition_groups: {group_ids}")
+def reset_sync_state(sb, dry_run: bool) -> None:
+    print("\n=== Sync state ===")
+    print(f"  last_synced_at -> {EPOCH}")
+    if dry_run:
+        return
+    sb.table("sync_state").upsert(
+        {"key": "last_synced_at", "value": EPOCH},
+        on_conflict="key",
+    ).execute()
 
-    # 清空 sync_logs, sync_state
-    supabase.table("sync_logs").delete().neq("id", 0).execute()
-    supabase.table("sync_state").delete().neq("key", "").execute()
-    print("  cleared sync_logs, sync_state")
 
-    print("\n清除完成")
+def cleanup(target: str, env_file: str, dry_run: bool, yes: bool, local_cache: bool) -> None:
+    load_env(env_file)
+    sb, url = require_client()
+    project_ref = env_project_ref(url)
+
+    print(f"Target: {target}")
+    print(f"Env file: {env_file}")
+    print(f"Supabase project: {project_ref}")
+    print(f"Mode: {'dry-run' if dry_run else 'DELETE'}")
+    if not dry_run and not yes:
+        raise SystemExit("Refusing to delete without --yes")
+
+    print("\n=== Storage ===")
+    for bucket in STORAGE_BUCKETS:
+        paths = list_bucket_paths(sb.storage, bucket)
+        remove_bucket_paths(sb.storage, bucket, paths, dry_run)
+
+    print("\n=== Data tables ===")
+    for table in DATA_TABLES:
+        clear_table(sb, table, dry_run)
+
+    print("\n=== Sync logs ===")
+    clear_table(sb, "sync_logs", dry_run)
+    reset_sync_state(sb, dry_run)
+
+    if local_cache:
+        clear_local_cache(dry_run)
+
+    print("\nDone")
+
+
+def main() -> None:
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--target", choices=["dev", "prod"], required=True)
+    parser.add_argument("--env-file", required=True)
+    parser.add_argument("--dry-run", action="store_true")
+    parser.add_argument("--yes", action="store_true")
+    parser.add_argument("--local-cache", action="store_true")
+    args = parser.parse_args()
+    cleanup(
+        target=args.target,
+        env_file=args.env_file,
+        dry_run=args.dry_run,
+        yes=args.yes,
+        local_cache=args.local_cache,
+    )
 
 
 if __name__ == "__main__":
-    parser = argparse.ArgumentParser()
-    parser.add_argument("--dry-run", action="store_true")
-    args = parser.parse_args()
-    cleanup(dry_run=args.dry_run)
+    try:
+        main()
+    except Exception as e:
+        print(f"cleanup failed: {e}", file=sys.stderr)
+        sys.exit(1)
