@@ -201,12 +201,13 @@ expeditions         id, group_id, drive_folder_id (unique),
                     name, date_start, date_end,
                     region_entry_county, region_entry_town,
                     region_exit_county, region_exit_town,
-                    leader, preview_image, created_at
+                    leader, grade, preview_image, created_at
 expedition_counties id, expedition_id, county            （入山＋出山各一筆，UNIQUE）
 gpx_files           id, expedition_id, drive_file_id (unique), filename, file_path
 map_files           id, expedition_id, drive_file_id (unique), filename, file_path
 records             id, expedition_id, drive_file_id (unique), filename, content, file_path
 sync_state          key, value, updated_at               （存 last_synced_at）
+sync_logs           synced_at, trigger, status, counts, errors, log_text
 ```
 
 **Storage Buckets（Public）：**
@@ -218,11 +219,13 @@ sync_state          key, value, updated_at               （存 last_synced_at�
 | `previews` | 出隊計畫書預覽圖（`{id}.png`） |
 | `records` | 上繳紀錄原始檔（`{expedition_id}/{safe_filename}`） |
 
-**RLS：** 所有 table 啟用，`anon` 只能 SELECT，`service_role` 有完整寫入權限。
+**RLS：** 所有 table 啟用。公開列表透過 `SECURITY DEFINER` RPC 讀取，`service_role` 有完整寫入權限。
 
 **RPC 函式：**
-- `list_expeditions(p_q, p_county, p_counties[], p_start, p_end, p_page, p_page_size)` → `{expeditions, total, page, pageSize}`
+- `list_expeditions(p_q, p_county, p_counties[], p_start, p_end, p_page, p_page_size, p_grade, p_sort)` → `{expeditions, total, page, pageSize}`，每筆 expedition 會包含 `gpx_count`、`map_count`、`rec_count`
 - `get_expedition_dates()` → `{min_date, max_date}`
+
+`grade` 由 DB trigger 從隊伍名稱 prefix 自動解析，例如 `[5C活]` 會寫入 `C`。
 
 ---
 
