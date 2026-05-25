@@ -24,6 +24,7 @@ create table if not exists expeditions (
   region_exit_county   text,
   region_exit_town     text,
   leader               text,
+  grade                text,
   preview_image        text,
   created_at           timestamptz default now()
 );
@@ -56,7 +57,8 @@ create table if not exists records (
   expedition_id  bigint not null references expeditions(id) on delete cascade,
   drive_file_id  text unique not null,
   filename       text not null,
-  content        text
+  content        text,
+  file_path      text
 );
 
 create table if not exists sync_state (
@@ -64,6 +66,23 @@ create table if not exists sync_state (
   value      text not null,
   updated_at timestamptz default now()
 );
+
+create table if not exists sync_logs (
+  id             bigserial primary key,
+  synced_at      timestamptz not null default now(),
+  trigger        text,
+  status         text not null default 'success',
+  new_count      integer not null default 0,
+  existing_count integer not null default 0,
+  skipped_count  integer not null default 0,
+  error_count    integer not null default 0,
+  errors         jsonb not null default '[]'::jsonb,
+  log_text       text,
+  created_at     timestamptz not null default now()
+);
+
+alter table expeditions add column if not exists grade text;
+alter table records add column if not exists file_path text;
 
 -- 初始化 last_synced_at（若尚未存在）
 insert into sync_state (key, value) values ('last_synced_at', '1970-01-01T00:00:00+00:00')
@@ -78,6 +97,7 @@ alter table gpx_files          enable row level security;
 alter table map_files          enable row level security;
 alter table records            enable row level security;
 alter table sync_state         enable row level security;
+alter table sync_logs          enable row level security;
 
 do $$ begin
   drop policy if exists "anon select" on expedition_groups;
@@ -95,6 +115,7 @@ create policy "anon select" on gpx_files          for select to anon using (true
 create policy "anon select" on map_files          for select to anon using (true);
 create policy "anon select" on records            for select to anon using (true);
 -- sync_state：anon 不可讀（only service_role）
+-- sync_logs：anon 不可讀（only service_role）
 
 -- service_role 需要對所有 table 有完整權限（CI sync 腳本使用）
 grant all on all tables    in schema public to service_role;
@@ -108,71 +129,147 @@ grant all on all sequences in schema public to service_role;
 
 -- ── RPC Functions ────────────────────────────────────────────
 
-create or replace function list_expeditions(
-  p_q         text    default null,
-  p_county    text    default null,
-  p_counties  text[]  default null,
-  p_start     date    default null,
-  p_end       date    default null,
-  p_page      int     default 1,
-  p_page_size int     default 20
-)
-returns json
-language plpgsql
-security definer
+create or replace function expedition_grade_from_name(p_name text)
+returns text
+language sql
+immutable
 as $$
-declare
-  v_offset   int    := (p_page - 1) * p_page_size;
-  v_total    int;
-  v_rows     json;
-  v_q        text   := nullif(trim(p_q),      '');
-  v_county   text   := nullif(trim(p_county), '');
-  v_start    date   := p_start;
-  v_end      date   := p_end;
-  v_counties text[] := case when cardinality(p_counties) = 0 then null else p_counties end;
+  select nullif(upper(substring(coalesce(p_name, '') from '^[\[\［][0-9]+([A-Da-d])')), '')
+$$;
+
+update expeditions
+set grade = expedition_grade_from_name(name)
+where grade is null
+  and expedition_grade_from_name(name) is not null;
+
+create or replace function set_expedition_grade()
+returns trigger
+language plpgsql
+as $$
 begin
-  select count(*) into v_total
-  from expeditions e
-  where
-    (v_q is null or e.name ilike '%' || v_q || '%')
-    and (v_county is null or exists (
-          select 1 from expedition_counties ec
-          where ec.expedition_id = e.id and ec.county = v_county
-        ))
-    and (v_counties is null or exists (
-          select 1 from expedition_counties ec
-          where ec.expedition_id = e.id and ec.county = any(v_counties)
-        ))
-    and (v_start is null or e.date_start >= v_start)
-    and (v_end   is null or e.date_start <= v_end);
-
-  select json_agg(row_to_json(r)) into v_rows
-  from (
-    select e.*
-    from expeditions e
-    where
-      (v_q is null or e.name ilike '%' || v_q || '%')
-      and (v_county is null or exists (
-            select 1 from expedition_counties ec
-            where ec.expedition_id = e.id and ec.county = v_county
-          ))
-      and (v_counties is null or exists (
-            select 1 from expedition_counties ec
-            where ec.expedition_id = e.id and ec.county = any(v_counties)
-          ))
-      and (v_start is null or e.date_start >= v_start)
-      and (v_end   is null or e.date_start <= v_end)
-    order by e.date_start desc
-    limit p_page_size offset v_offset
-  ) r;
-
-  return json_build_object(
-    'expeditions', coalesce(v_rows, '[]'::json),
-    'total',       v_total,
-    'page',        p_page,
-    'pageSize',    p_page_size
-  );
+  new.grade := expedition_grade_from_name(new.name);
+  return new;
 end;
+$$;
+
+drop trigger if exists expeditions_set_grade on expeditions;
+create trigger expeditions_set_grade
+before insert or update of name on expeditions
+for each row
+execute function set_expedition_grade();
+
+create index if not exists expeditions_grade_idx
+on expeditions (grade);
+
+create index if not exists expeditions_date_start_idx
+on expeditions (date_start);
+
+create index if not exists expeditions_date_end_idx
+on expeditions (date_end);
+
+create index if not exists expedition_counties_county_expedition_id_idx
+on expedition_counties (county, expedition_id);
+
+create index if not exists gpx_files_expedition_id_idx
+on gpx_files (expedition_id);
+
+create index if not exists map_files_expedition_id_idx
+on map_files (expedition_id);
+
+create index if not exists records_expedition_id_idx
+on records (expedition_id);
+
+drop function if exists list_expeditions(text, text, text[], date, date, integer, integer);
+drop function if exists list_expeditions(text, text, text[], text, date, date, integer, integer);
+drop function if exists list_expeditions(text, text, text[], date, date, integer, integer, text, text);
+
+create or replace function list_expeditions(
+  p_q text default '',
+  p_county text default '',
+  p_counties text[] default '{}'::text[],
+  p_start date default null,
+  p_end date default null,
+  p_page integer default 1,
+  p_page_size integer default 20,
+  p_grade text default '',
+  p_sort text default 'latest'
+)
+returns jsonb
+language sql
+stable
+security definer
+set search_path = public
+as $$
+with filtered as (
+  select e.*
+  from public.expeditions e
+  where
+    (coalesce(p_q, '') = ''
+      or e.name ilike '%' || p_q || '%'
+      or e.leader ilike '%' || p_q || '%')
+    and (coalesce(p_grade, '') = '' or e.grade = upper(p_grade))
+    and (p_start is null or coalesce(e.date_end, e.date_start) >= p_start)
+    and (p_end is null or e.date_start <= p_end)
+    and (
+      coalesce(p_county, '') = ''
+      or exists (
+        select 1
+        from public.expedition_counties ec
+        where ec.expedition_id = e.id
+          and ec.county = p_county
+      )
+    )
+    and (
+      coalesce(array_length(p_counties, 1), 0) = 0
+      or exists (
+        select 1
+        from public.expedition_counties ec
+        where ec.expedition_id = e.id
+          and ec.county = any(p_counties)
+      )
+    )
+),
+page_rows as (
+  select *
+  from filtered
+  order by
+    case when p_sort = 'oldest' then coalesce(date_end, date_start) end asc nulls last,
+    case when p_sort <> 'oldest' then coalesce(date_end, date_start) end desc nulls last,
+    id desc
+  limit greatest(p_page_size, 1)
+  offset greatest(p_page - 1, 0) * greatest(p_page_size, 1)
+),
+counts as (
+  select
+    p.id,
+    (select count(*) from public.gpx_files gf where gf.expedition_id = p.id)::int as gpx_count,
+    (select count(*) from public.map_files mf where mf.expedition_id = p.id)::int as map_count,
+    (select count(*) from public.records rf where rf.expedition_id = p.id)::int as rec_count
+  from page_rows p
+)
+select jsonb_build_object(
+  'expeditions',
+  coalesce(
+    jsonb_agg(
+      to_jsonb(p)
+      || jsonb_build_object(
+        'gpx_count', c.gpx_count,
+        'map_count', c.map_count,
+        'rec_count', c.rec_count
+      )
+      order by
+        case when p_sort = 'oldest' then coalesce(p.date_end, p.date_start) end asc nulls last,
+        case when p_sort <> 'oldest' then coalesce(p.date_end, p.date_start) end desc nulls last,
+        p.id desc
+    ),
+    '[]'::jsonb
+  ),
+  'total', (select count(*) from filtered),
+  'page', greatest(p_page, 1),
+  'pageSize', greatest(p_page_size, 1)
+)
+from page_rows p
+left join counts c on c.id = p.id;
 $$;
 
 create or replace function get_expedition_dates()
@@ -187,5 +284,5 @@ as $$
   from expeditions;
 $$;
 
-grant execute on function list_expeditions(text, text, text[], date, date, integer, integer) to anon;
+grant execute on function list_expeditions(text, text, text[], date, date, integer, integer, text, text) to anon;
 grant execute on function get_expedition_dates() to anon;
