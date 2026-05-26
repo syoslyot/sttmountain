@@ -36,7 +36,7 @@ from googleapiclient.http import MediaIoBaseDownload
 from supabase import create_client
 
 load_dotenv()
-load_dotenv('.env.local', override=True)
+load_dotenv(os.environ.get("ENV_FILE", ".env.local"), override=True)
 
 # ── 常數 ────────────────────────────────────────────────────
 

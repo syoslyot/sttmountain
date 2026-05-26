@@ -125,9 +125,9 @@ GitHub 開一台全新 Ubuntu 機器，安裝：
                     │   (sttmountain         │
                     │    sync script)        │
                     │                        │
-                    │  .env.local 存在       │
+                    │  ENV_FILE=.env.local   │
                     │    → dev DB / Storage  │
-                    │  .env.local 不存在     │
+                    │  ENV_FILE=.env         │
                     │    → prod DB / Storage │
                     └────────┬───────────────┘
                              │ upsert records / upload files
@@ -153,8 +153,8 @@ GitHub 開一台全新 Ubuntu 機器，安裝：
 
 | 情境 | 本機後端指向 | 本機前端指向 |
 |---|---|---|
-| 日常開發 | dev DB（`.env.local` 存在） | dev DB（`.env.local` 存在） |
-| 對 prod 操作 | prod DB（`.env.local` 改名為 `.env.local.dev`） | prod DB（同上） |
+| 日常開發 | dev DB（`ENV_FILE=.env.local`） | dev DB（前端 repo 的 `.env.local`） |
+| 對 prod 操作 | prod DB（`ENV_FILE=.env`） | prod DB（前端 repo 的 `.env` 或部署 env） |
 | Render / 線上 | — | 永遠是 prod DB（Render env vars） |
 
 ---
@@ -167,7 +167,7 @@ pip install -r requirements.txt
 
 # 填入 Supabase 連線資訊（不可 commit）
 cp .env.example .env.local
-# 編輯 .env.local：SUPABASE_URL、SUPABASE_ANON_KEY
+# 編輯 .env.local：SUPABASE_URL、SUPABASE_ANON_KEY、SUPABASE_SERVICE_KEY
 
 uvicorn app.main:app --reload
 # 開啟 http://localhost:8000
@@ -179,7 +179,8 @@ uvicorn app.main:app --reload
 |---|---|---|---|
 | GitHub Actions | Google Drive | `GDRIVE_CREDENTIALS_JSON`、`GDRIVE_ROOT_FOLDER_ID` | GitHub Secrets |
 | GitHub Actions | Supabase | `SUPABASE_URL`、`SUPABASE_SERVICE_KEY` | GitHub Secrets |
-| 本機開發 | Supabase | `SUPABASE_URL`、`SUPABASE_ANON_KEY` | `.env.local`（gitignore） |
+| 本機 dev DB | Supabase | `SUPABASE_URL`、`SUPABASE_ANON_KEY`、`SUPABASE_SERVICE_KEY` | `.env.local`（gitignore） |
+| 本機 prod DB | Supabase | `SUPABASE_URL`、`SUPABASE_SERVICE_KEY` | `.env`（gitignore） |
 
 **Supabase 值的取得位置：** Dashboard → Settings → API
 
@@ -191,9 +192,27 @@ uvicorn app.main:app --reload
 
 > `service_role` 有完整資料庫權限，絕不可放進前端程式碼或 repo。
 
+本機腳本切換 DB 時，使用 `ENV_FILE` 明確指定：
+
+```bash
+ENV_FILE=.env.local python3 scripts/sync_drive.py
+ENV_FILE=.env.local python3 scripts/normalize.py
+
+ENV_FILE=.env python3 scripts/sync_drive.py
+ENV_FILE=.env python3 scripts/normalize.py
+```
+
 ---
 
 ## DB Schema（Supabase PostgreSQL）
+
+DB schema and migration workflow are documented in [`docs/database.md`](docs/database.md).
+`sttmountain` is the source of truth for Supabase SQL. Frontend projects such as
+`sttmountaincrazy` should depend on the RPC contract here, not keep their own SQL
+copies.
+
+新增或修改 DB 結構時，請新增 `db/migrations/*.sql`，先套 dev DB、驗證，再套同一份 SQL 到 prod DB。
+不要只在 prod 手動補 SQL。
 
 ```
 expedition_groups   id, name, drive_folder_id (unique), created_at
@@ -208,6 +227,7 @@ map_files           id, expedition_id, drive_file_id (unique), filename, file_pa
 records             id, expedition_id, drive_file_id (unique), filename, content, file_path
 sync_state          key, value, updated_at               （存 last_synced_at）
 sync_logs           synced_at, trigger, status, counts, errors, log_text
+schema_migrations   version, applied_at                  （記錄已套用的 migration）
 ```
 
 **Storage Buckets（Public）：**
