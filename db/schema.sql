@@ -107,6 +107,7 @@ alter table map_files          enable row level security;
 alter table records            enable row level security;
 alter table sync_state         enable row level security;
 alter table sync_logs          enable row level security;
+alter table schema_migrations  enable row level security;
 
 do $$ begin
   drop policy if exists "anon select" on expedition_groups;
@@ -293,5 +294,21 @@ as $$
   from expeditions;
 $$;
 
-grant execute on function list_expeditions(text, text, text[], date, date, integer, integer, text, text) to anon;
-grant execute on function get_expedition_dates() to anon;
+create or replace function get_expedition_years()
+returns json
+language sql
+stable
+security definer
+set search_path = public
+as $$
+  select coalesce(json_agg(year order by year desc), '[]'::json)
+  from (
+    select distinct extract(year from date_start)::int as year
+    from public.expeditions
+    where date_start is not null
+  ) years;
+$$;
+
+grant execute on function list_expeditions(text, text, text[], date, date, integer, integer, text, text) to anon, authenticated;
+grant execute on function get_expedition_dates() to anon, authenticated;
+grant execute on function get_expedition_years() to anon, authenticated;
