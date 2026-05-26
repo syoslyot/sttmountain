@@ -1,19 +1,17 @@
 """
 從 Google Drive 同步出隊資料到本機，並產生 data/raw/sync_meta.json。
 
-Drive 結構（2026-05-01 後的新格式）：
+Drive 結構（2026-05-15 後的新格式）：
   所有出隊資料夾/
-    {出隊名稱}/               ← solo：資料夾直接含直企 xlsx
-      {日期}_{名稱}_直企.xlsx
-      地圖/                   ← pdf, docx, jpg, png, jpeg
-      航跡/                   ← gpx, kml
-      上繳紀錄/               ← txt, md, docx, pdf, Google Doc
+    [{天數}{級數}{類別}]{隊伍名稱}_{日期}/
+      {隊伍名稱}_直企.xlsx
+      上繳航跡與紀錄/         ← gpx, kml, txt, md, docx, pdf, Google Doc，可含子資料夾
+      地圖/                   ← pdf, docx, jpg, png, jpeg，可含子資料夾
     {活動名稱}/               ← 大眾化：資料夾含子資料夾
-      {隊伍名稱}/
-        {日期}_{名稱}_直企.xlsx
+      [{天數}{級數}{類別}]{隊伍名稱}_{日期}/
+        {隊伍名稱}_直企.xlsx
+        上繳航跡與紀錄/
         地圖/
-        航跡/
-        上繳紀錄/
 
 環境變數：
   GDRIVE_CREDENTIALS_JSON  — Service Account JSON 內容
@@ -25,6 +23,7 @@ Drive 結構（2026-05-01 後的新格式）：
 import io
 import json
 import os
+import re
 import sys
 from datetime import date, datetime, timezone
 from pathlib import Path
@@ -51,9 +50,8 @@ GPX_DIR  = Path(__file__).parent.parent / "app" / "static" / "gpx"
 MAPS_DIR = Path(__file__).parent.parent / "app" / "static" / "maps"
 META_PATH = RAW_DIR / "sync_meta.json"
 
-MAP_FOLDER_NAMES    = {"地圖"}
-TRACK_FOLDER_NAMES  = {"航跡"}
-RECORD_FOLDER_NAMES = {"上繳紀錄"}
+MAP_FOLDER_NAMES = {"地圖"}
+SUBMISSION_FOLDER_NAMES = {"上繳航跡與紀錄"}
 
 ZHIJIAN_EXTS = {".xlsx", ".xls", ".numbers"}
 GPX_EXTS    = {".gpx", ".kml"}
@@ -222,16 +220,36 @@ def _write_sync_log(synced_at: str, stats: dict, log_text: str = ""):
 
 # ── Folder classification ────────────────────────────────────
 
-def find_zhijian_file(items: list[dict]) -> dict | None:
-    """在直接子項目中找含「直企」的 xlsx/xls/numbers/gsheet 檔。"""
+TEAM_FOLDER_RE = re.compile(r"^[\[\［]\d+[A-Da-d][^\]\］]*[\]\］](?P<title>.+)$")
+
+
+def is_team_folder_name(name: str) -> bool:
+    return bool(TEAM_FOLDER_RE.match(name.strip()))
+
+
+def extract_team_title(folder_name: str) -> str:
+    match = TEAM_FOLDER_RE.match(folder_name.strip())
+    if not match:
+        return folder_name.strip()
+    title = match.group("title").strip(" _-")
+    title = re.sub(r"[\s_-]*\d{8}$", "", title).strip(" _-")
+    return title or match.group("title").strip()
+
+
+def _is_zhijian_candidate(item: dict) -> bool:
+    if item["mimeType"] == GSHEET_MIME:
+        return True
+    return Path(item["name"]).suffix.lower() in ZHIJIAN_EXTS
+
+
+def find_zhijian_file(items: list[dict], team_title: str) -> dict | None:
+    """在直接子項目中找檔名含「直企」或隊伍名稱的直企檔。"""
     for item in items:
         if is_folder(item):
             continue
-        if "直企" not in item["name"]:
+        if not _is_zhijian_candidate(item):
             continue
-        if item["mimeType"] == GSHEET_MIME:
-            return item
-        if Path(item["name"]).suffix.lower() in ZHIJIAN_EXTS:
+        if "直企" in item["name"] or (team_title and team_title in item["name"]):
             return item
     return None
 
@@ -242,16 +260,18 @@ def classify_top_folder(service, folder: dict) -> tuple[str, list[dict], dict | 
     kind: 'solo' | 'group' | 'skip'
     """
     items = list_folder(service, folder["id"])
-    zhijian = find_zhijian_file(items)
-    if zhijian:
-        return "solo", items, zhijian, []
+    if is_team_folder_name(folder["name"]):
+        zhijian = find_zhijian_file(items, extract_team_title(folder["name"]))
+        if zhijian:
+            return "solo", items, zhijian, []
+        return "skip", items, None, []
 
     team_entries = []
     for item in items:
-        if not is_folder(item):
+        if not is_folder(item) or not is_team_folder_name(item["name"]):
             continue
         sub_items = list_folder(service, item["id"])
-        sub_zhijian = find_zhijian_file(sub_items)
+        sub_zhijian = find_zhijian_file(sub_items, extract_team_title(item["name"]))
         if sub_zhijian:
             team_entries.append((item, sub_items, sub_zhijian))
 
@@ -262,6 +282,16 @@ def classify_top_folder(service, folder: dict) -> tuple[str, list[dict], dict | 
 
 
 # ── File sync per expedition folder ─────────────────────────
+
+def collect_descendant_files(service, folder_id: str) -> list[dict]:
+    files: list[dict] = []
+    for item in list_folder(service, folder_id):
+        if is_folder(item):
+            files.extend(collect_descendant_files(service, item["id"]))
+        else:
+            files.append(item)
+    return files
+
 
 def sync_expedition_files(
     service,
@@ -282,12 +312,10 @@ def sync_expedition_files(
         if not is_folder(item):
             continue
         folder_name = item["name"]
-        sub_items = list_folder(service, item["id"])
+        sub_items = collect_descendant_files(service, item["id"])
 
         if folder_name in MAP_FOLDER_NAMES:
             for f in sub_items:
-                if is_folder(f):
-                    continue
                 ext = Path(f["name"]).suffix.lower()
                 if ext not in MAP_EXTS:
                     continue
@@ -304,10 +332,8 @@ def sync_expedition_files(
                 except Exception as e:
                     errors.append({"folder": local_dir, "file": f["name"], "stage": "download_map", "message": str(e)})
 
-        elif folder_name in TRACK_FOLDER_NAMES:
+        elif folder_name in SUBMISSION_FOLDER_NAMES:
             for f in sub_items:
-                if is_folder(f):
-                    continue
                 ext = Path(f["name"]).suffix.lower()
                 if ext not in GPX_EXTS:
                     continue
@@ -324,12 +350,13 @@ def sync_expedition_files(
                 except Exception as e:
                     errors.append({"folder": local_dir, "file": f["name"], "stage": "download_gpx", "message": str(e)})
 
-        elif folder_name in RECORD_FOLDER_NAMES:
             for f in sub_items:
-                if is_folder(f):
-                    continue
                 mime = f["mimeType"]
                 ext  = Path(f["name"]).suffix.lower()
+                if mime != GDOC_MIME and ext not in RECORD_EXTS:
+                    continue
+                if ext in GPX_EXTS:
+                    continue
                 if not is_new and not (f.get("modifiedTime") and parse_dt(f["modifiedTime"]) > last_synced_at):
                     continue
                 if mime == GDOC_MIME:
@@ -343,8 +370,6 @@ def sync_expedition_files(
                         })
                     except Exception as e:
                         errors.append({"folder": local_dir, "file": f["name"], "stage": "download_record", "message": str(e)})
-                elif mime == GSHEET_MIME:
-                    pass  # TODO: Google Sheet 直企處理，之後補
                 elif ext in RECORD_EXTS:
                     dest = TXT_DIR / local_dir / f["name"]
                     try:
@@ -501,7 +526,7 @@ def main():
                 groups.append(group_entry)
 
         else:
-            print(f"  skipped (no 直企 xlsx found)")
+            print("  skipped (not a valid team folder or no 直企 found)")
             run_stats["skipped"] += 1
 
     RAW_DIR.mkdir(parents=True, exist_ok=True)
