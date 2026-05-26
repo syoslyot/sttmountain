@@ -1,4 +1,4 @@
-# Database workflow
+# Database Workflow
 
 `sttmountain` is the source of truth for Supabase schema, migrations, and sync
 scripts. `sttmountaincrazy` is a frontend consumer and should not own database
@@ -23,6 +23,35 @@ second, so both databases stay aligned.
 | `scripts/sync_drive.py` | Downloads Google Drive files and writes `data/raw/sync_meta.json`. |
 | `scripts/normalize.py` | Parses `sync_meta.json`, writes DB rows, uploads storage files. |
 | `scripts/cleanup_dev_test.py` | Explicit dev/prod reset tool for DB and storage. |
+
+## Schema Overview
+
+| Table | Purpose |
+| --- | --- |
+| `expedition_groups` | Activity/group container. Group activities share one row; solo expeditions get their own group. |
+| `expeditions` | Main expedition rows: name, dates, regions, leader, grade, preview image. |
+| `expedition_counties` | Counties indexed for entry/exit region filtering. |
+| `gpx_files` | GPX/KML Storage file metadata. |
+| `map_files` | Map PDF/image Storage file metadata. |
+| `records` | Submitted record metadata and extracted text/file path. |
+| `sync_state` | Stores sync cursor such as `last_synced_at`. |
+| `sync_logs` | Sync run status, counts, errors, and log text. |
+| `schema_migrations` | Records manually applied SQL migration versions. |
+
+## Storage Buckets
+
+| Bucket | Contents |
+| --- | --- |
+| `gpx` | GPX / KML track files |
+| `maps` | Map PDFs and images |
+| `previews` | Expedition plan preview images |
+| `records` | Original submitted record files |
+
+## RLS and Access
+
+All application tables should have RLS enabled. Public list reads go through `SECURITY DEFINER` RPC functions, while sync scripts use the Supabase service role key for writes.
+
+Do not expose `SUPABASE_SERVICE_KEY` to frontend code or public logs.
 
 ## Environment files
 
@@ -55,8 +84,8 @@ commit it to git.
 
    ```sql
    alter table public.records add column if not exists file_path text;
-create index if not exists records_expedition_id_idx on public.records (expedition_id);
-```
+   create index if not exists records_expedition_id_idx on public.records (expedition_id);
+   ```
 
 3. Keep `schema_migrations` protected by RLS when bootstrapping a database:
 
@@ -134,6 +163,8 @@ get_expedition_dates()
 get_expedition_years()
 ```
 
+### `list_expeditions()`
+
 `list_expeditions()` returns:
 
 ```text
@@ -143,13 +174,37 @@ get_expedition_years()
 Each expedition row includes:
 
 ```text
+id, name, grade, date_start, date_end,
+region_entry_county, region_entry_town,
+region_exit_county, region_exit_town,
+leader, preview_image,
 gpx_count, map_count, rec_count
 ```
+
+### `get_expedition_dates()`
+
+`get_expedition_dates()` returns the available expedition date range:
+
+```text
+{ min_date, max_date }
+```
+
+### `get_expedition_years()`
 
 `get_expedition_years()` returns only years that have at least one expedition:
 
 ```text
 [2026, 2024]
+```
+
+Do not synthesize missing intermediate years in the frontend.
+
+## Grade Normalization
+
+`grade` is parsed from the expedition name prefix by DB trigger logic. Example:
+
+```text
+[5C活] 嘉明湖會師-布拉克桑線 20240710 -> C
 ```
 
 Schema or RPC changes required by the frontend must be implemented here first,
