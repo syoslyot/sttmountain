@@ -55,10 +55,16 @@ commit it to git.
 
    ```sql
    alter table public.records add column if not exists file_path text;
-   create index if not exists records_expedition_id_idx on public.records (expedition_id);
+create index if not exists records_expedition_id_idx on public.records (expedition_id);
+```
+
+3. Keep `schema_migrations` protected by RLS when bootstrapping a database:
+
+   ```sql
+   alter table public.schema_migrations enable row level security;
    ```
 
-3. End the migration by recording it:
+4. End the migration by recording it:
 
    ```sql
    insert into public.schema_migrations (version)
@@ -66,25 +72,25 @@ commit it to git.
    on conflict (version) do nothing;
    ```
 
-4. Apply the migration to dev in Supabase SQL Editor.
+5. Apply the migration to dev in Supabase SQL Editor.
 
-5. Verify dev:
+6. Verify dev:
 
    ```bash
    ENV_FILE=.env.local python3 scripts/sync_drive.py
    ENV_FILE=.env.local python3 scripts/normalize.py
    ```
 
-6. Apply the same migration file to prod.
+7. Apply the same migration file to prod.
 
-7. Verify prod:
+8. Verify prod:
 
    ```bash
    ENV_FILE=.env python3 scripts/sync_drive.py
    ENV_FILE=.env python3 scripts/normalize.py
    ```
 
-8. Commit the migration and any matching script/frontend changes in PRs.
+9. Commit the migration and any matching script/frontend changes in PRs.
 
 Check applied migrations:
 
