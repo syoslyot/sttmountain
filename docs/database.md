@@ -125,6 +125,7 @@ ENV_FILE=.env python3 scripts/normalize.py
 ```text
 list_expeditions(p_q, p_county, p_counties, p_start, p_end, p_page, p_page_size, p_grade, p_sort)
 get_expedition_dates()
+get_expedition_years()
 ```
 
 `list_expeditions()` returns:
@@ -137,6 +138,12 @@ Each expedition row includes:
 
 ```text
 gpx_count, map_count, rec_count
+```
+
+`get_expedition_years()` returns only years that have at least one expedition:
+
+```text
+[2026, 2024]
 ```
 
 Schema or RPC changes required by the frontend must be implemented here first,
