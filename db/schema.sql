@@ -25,6 +25,7 @@ create table if not exists expeditions (
   region_exit_town     text,
   leader               text,
   grade                text,
+  is_public            boolean not null default true,
   preview_image        text,
   created_at           timestamptz default now()
 );
@@ -87,6 +88,7 @@ create table if not exists schema_migrations (
 );
 
 alter table expeditions add column if not exists grade text;
+alter table expeditions add column if not exists is_public boolean not null default true;
 alter table records add column if not exists file_path text;
 
 insert into schema_migrations (version)
@@ -118,12 +120,47 @@ do $$ begin
   drop policy if exists "anon select" on records;
 end $$;
 
-create policy "anon select" on expedition_groups  for select to anon using (true);
-create policy "anon select" on expeditions        for select to anon using (true);
-create policy "anon select" on expedition_counties for select to anon using (true);
-create policy "anon select" on gpx_files          for select to anon using (true);
-create policy "anon select" on map_files          for select to anon using (true);
-create policy "anon select" on records            for select to anon using (true);
+create policy "anon select" on expedition_groups for select to anon using (
+  exists (
+    select 1
+    from public.expeditions e
+    where e.group_id = expedition_groups.id
+      and e.is_public is true
+  )
+);
+create policy "anon select" on expeditions for select to anon using (is_public is true);
+create policy "anon select" on expedition_counties for select to anon using (
+  exists (
+    select 1
+    from public.expeditions e
+    where e.id = expedition_counties.expedition_id
+      and e.is_public is true
+  )
+);
+create policy "anon select" on gpx_files for select to anon using (
+  exists (
+    select 1
+    from public.expeditions e
+    where e.id = gpx_files.expedition_id
+      and e.is_public is true
+  )
+);
+create policy "anon select" on map_files for select to anon using (
+  exists (
+    select 1
+    from public.expeditions e
+    where e.id = map_files.expedition_id
+      and e.is_public is true
+  )
+);
+create policy "anon select" on records for select to anon using (
+  exists (
+    select 1
+    from public.expeditions e
+    where e.id = records.expedition_id
+      and e.is_public is true
+  )
+);
 -- sync_state：anon 不可讀（only service_role）
 -- sync_logs：anon 不可讀（only service_role）
 
@@ -177,6 +214,9 @@ on expeditions (date_start);
 create index if not exists expeditions_date_end_idx
 on expeditions (date_end);
 
+create index if not exists expeditions_is_public_idx
+on expeditions (is_public);
+
 create index if not exists expedition_counties_county_expedition_id_idx
 on expedition_counties (county, expedition_id);
 
@@ -214,7 +254,8 @@ with filtered as (
   select e.*
   from public.expeditions e
   where
-    (coalesce(p_q, '') = ''
+    e.is_public is true
+    and (coalesce(p_q, '') = ''
       or e.name ilike '%' || p_q || '%'
       or e.leader ilike '%' || p_q || '%')
     and (coalesce(p_grade, '') = '' or e.grade = upper(p_grade))
@@ -291,7 +332,8 @@ as $$
     'min_date', min(date_start),
     'max_date', max(date_start)
   )
-  from expeditions;
+  from expeditions
+  where is_public is true;
 $$;
 
 create or replace function get_expedition_years()
@@ -305,7 +347,8 @@ as $$
   from (
     select distinct extract(year from date_start)::int as year
     from public.expeditions
-    where date_start is not null
+    where is_public is true
+      and date_start is not null
   ) years;
 $$;
 

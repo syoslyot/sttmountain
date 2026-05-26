@@ -10,7 +10,13 @@ templates = Jinja2Templates(directory=Path(__file__).parent.parent / "templates"
 
 @router.get("/expedition/{expedition_id}", response_class=HTMLResponse)
 def expedition_detail(request: Request, expedition_id: int):
-    exp_res = supabase.table("expeditions").select("*").eq("id", expedition_id).execute()
+    exp_res = (
+        supabase.table("expeditions")
+        .select("*")
+        .eq("id", expedition_id)
+        .eq("is_public", True)
+        .execute()
+    )
     if not exp_res.data:
         raise HTTPException(status_code=404)
     exp = exp_res.data[0]

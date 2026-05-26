@@ -47,3 +47,5 @@ Use `ENV_FILE` explicitly when running scripts locally.
 ## Data Contract
 
 The frontend depends on public RPC and public Storage URLs. Schema and RPC changes must be implemented here first, applied manually in Supabase, then consumed by frontend code.
+
+Public data is defined at the DB/RPC boundary. `expeditions.is_public = false` rows remain available to service-role maintenance scripts, but public RPCs and anon table policies must exclude them so hidden expeditions do not appear in rows, filters, or detail views.

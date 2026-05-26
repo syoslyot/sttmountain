@@ -199,6 +199,17 @@ gpx_count, map_count, rec_count
 
 Do not synthesize missing intermediate years in the frontend.
 
+## Public Visibility
+
+`expeditions.is_public` controls whether an expedition is exposed publicly.
+
+- Default is `true`.
+- `list_expeditions()`, `get_expedition_dates()`, and `get_expedition_years()` only use public expeditions.
+- Anon RLS policies for expeditions and related file tables only expose rows connected to public expeditions.
+- Sync and maintenance scripts use service role and may still read/write hidden rows when needed.
+
+Use `is_public = false` for historical incomplete rows, canceled teams, or mistakenly imported expeditions that should stay in DB but disappear from public output and filters.
+
 ## Grade Normalization
 
 `grade` is parsed from the expedition name prefix by DB trigger logic. Example:
