@@ -107,6 +107,7 @@ alter table map_files          enable row level security;
 alter table records            enable row level security;
 alter table sync_state         enable row level security;
 alter table sync_logs          enable row level security;
+alter table schema_migrations  enable row level security;
 
 do $$ begin
   drop policy if exists "anon select" on expedition_groups;
