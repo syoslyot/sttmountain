@@ -128,6 +128,7 @@ def county_detail(request: Request, county: str):
     rows = (
         supabase.table("expeditions")
         .select("region_entry_town")
+        .eq("is_public", True)
         .eq("region_entry_county", county)
         .execute()
         .data or []
@@ -145,6 +146,7 @@ def region_detail(request: Request, county: str, region: str):
     rows = (
         supabase.table("expeditions")
         .select("*")
+        .eq("is_public", True)
         .eq("region_entry_county", county)
         .eq("region_entry_town", region)
         .order("date_start", desc=True)

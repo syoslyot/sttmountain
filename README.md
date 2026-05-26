@@ -1,10 +1,12 @@
 # sttmountain
 
-成大山協網站，提供出隊資料同步、整理與資料庫維護 repo。這個 repo 是 Supabase schema、migration、RPC、Google Drive 同步腳本與 normalize 流程的 source of truth。
+成大山協網站，提供資料同步、整理與資料庫維護 repo。這個 repo 是 Supabase schema、migration、RPC、Google Drive 同步腳本與 normalize 流程的 source of truth。
 
-前端展示網站在 [`sttmountaincrazy`](https://github.com/syoslyot/sttmountaincrazy)。
+主要使用者介面在 [`sttmountaincrazy`](https://github.com/syoslyot/sttmountaincrazy)。本機開網站時應啟動 `sttmountaincrazy`，網址通常是 [http://localhost:3000](http://localhost:3000)。
 
-## Quick Start
+## Legacy FastAPI App
+
+`sttmountain` 仍保留最早期的 FastAPI/Jinja 網頁，主要用途是 legacy 檢查與匯入流程輔助，不是目前主要網站。不要把 [http://localhost:8000](http://localhost:8000) 當成正式前端入口。
 
 ```bash
 python3 -m venv .venv
@@ -13,7 +15,7 @@ pip install -r requirements.txt
 uvicorn app.main:app --reload
 ```
 
-開啟 [http://localhost:8000](http://localhost:8000)。
+開啟 [http://localhost:8000](http://localhost:8000) 只會看到 legacy FastAPI app。
 
 本機需要 `.env.local`：
 
@@ -25,11 +27,11 @@ SUPABASE_SERVICE_KEY=...
 
 ## Main Responsibilities
 
-- 從 Google Drive 同步原始出隊資料。
+- 從 Google Drive 同步原始資料。
 - 解析直企、地圖、航跡與上繳紀錄。
 - 寫入 Supabase DB 與 Storage。
 - 維護 DB schema、migration、RPC 與 RLS contract。
-- 提供舊版 FastAPI/Jinja SSR 介面與同步工具。
+- 保留舊版 FastAPI/Jinja SSR 介面與同步工具。
 
 ## Useful Commands
 
