@@ -1,6 +1,6 @@
 # sttmountain
 
-成大山協出隊資料同步、整理與資料庫維護 repo。這個 repo 是 Supabase schema、migration、RPC、Google Drive 同步腳本與 normalize 流程的 source of truth。
+成大山協網站，提供出隊資料同步、整理與資料庫維護 repo。這個 repo 是 Supabase schema、migration、RPC、Google Drive 同步腳本與 normalize 流程的 source of truth。
 
 前端展示網站在 [`sttmountaincrazy`](https://github.com/syoslyot/sttmountaincrazy)。
 
