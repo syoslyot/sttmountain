@@ -244,6 +244,7 @@ schema_migrations   version, applied_at                  （記錄已套用的 m
 **RPC 函式：**
 - `list_expeditions(p_q, p_county, p_counties[], p_start, p_end, p_page, p_page_size, p_grade, p_sort)` → `{expeditions, total, page, pageSize}`，每筆 expedition 會包含 `gpx_count`、`map_count`、`rec_count`
 - `get_expedition_dates()` → `{min_date, max_date}`
+- `get_expedition_years()` → 實際有出隊資料的年份陣列，例如 `[2026, 2024]`
 
 `grade` 由 DB trigger 從隊伍名稱 prefix 自動解析，例如 `[5C活]` 會寫入 `C`。
 
