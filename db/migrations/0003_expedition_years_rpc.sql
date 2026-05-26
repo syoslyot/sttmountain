@@ -1,3 +1,8 @@
+create table if not exists public.schema_migrations (
+  version text primary key,
+  applied_at timestamptz not null default now()
+);
+
 create or replace function public.get_expedition_years()
 returns json
 language sql
