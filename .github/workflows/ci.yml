@@ -40,23 +40,48 @@ jobs:
           SUPABASE_ANON_KEY: "placeholder"
         run: python -c "from app.main import app; print('Import OK')"
 
-  # 資料同步：每日排程 or 手動觸發
-  sync-and-normalize:
+  # 預先建立 sync 專用 image（含 LibreOffice + Python deps）
+  build-sync-image:
     runs-on: ubuntu-latest
     if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
+    permissions:
+      contents: read
+      packages: write
     steps:
       - uses: actions/checkout@v4
 
-      - uses: actions/setup-python@v5
+      - name: Log in to GHCR
+        uses: docker/login-action@v3
         with:
-          python-version: '3.12'
-          cache: 'pip'
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Install Python dependencies
-        run: pip install -r requirements.txt
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
 
-      - name: Install LibreOffice + CJK fonts
-        run: sudo apt-get install -y libreoffice fonts-noto-cjk
+      - name: Build and push sync image
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          file: Dockerfile.sync
+          push: true
+          tags: ghcr.io/${{ github.repository_owner }}/sttmountain-sync:latest
+          cache-from: type=registry,ref=ghcr.io/${{ github.repository_owner }}/sttmountain-sync:cache
+          cache-to: type=registry,ref=ghcr.io/${{ github.repository_owner }}/sttmountain-sync:cache,mode=max
+
+  # 資料同步：每日排程 or 手動觸發
+  sync-and-normalize:
+    runs-on: ubuntu-latest
+    needs: build-sync-image
+    if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
+    container:
+      image: ghcr.io/${{ github.repository_owner }}/sttmountain-sync:latest
+      credentials:
+        username: ${{ github.actor }}
+        password: ${{ secrets.GITHUB_TOKEN }}
+    steps:
+      - uses: actions/checkout@v4
 
       - name: Sync from Google Drive
         env:
