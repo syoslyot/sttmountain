@@ -37,6 +37,7 @@ second, so both databases stay aligned.
 | `sync_state` | Stores sync cursor such as `last_synced_at`. |
 | `sync_logs` | Sync run status, counts, errors, and log text. |
 | `schema_migrations` | Records manually applied SQL migration versions. |
+| `user_profiles` | Member role and display name, linked to `auth.users`. See [membership.md](membership.md). |
 
 ## Storage Buckets
 
