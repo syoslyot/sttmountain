@@ -26,7 +26,7 @@ create table public.user_profiles (
   id           uuid primary key default gen_random_uuid(),
   user_id      uuid not null unique references auth.users(id) on delete cascade,
   role         public.member_role not null,
-  display_name text,
+  name text,
   created_at   timestamptz not null default now()
 );
 ```
@@ -47,7 +47,7 @@ create table public.user_profiles (
 
 ```sql
 -- 先在 Auth > Users 建立帳號，取得 user_id，再執行：
-insert into public.user_profiles (user_id, role, display_name)
+insert into public.user_profiles (user_id, role, name)
 values ('<uuid>', 'staff', '資料組');
 ```
 
@@ -73,7 +73,7 @@ OAuth 在 Supabase Dashboard > Authentication > Providers 啟用，不需額外 
 ## Auto-create trigger（0006_auth_trigger.sql）
 
 任何新帳號（Email 或 OAuth）在 `auth.users` 建立時，trigger 自動在 `user_profiles` 插入一筆 `newcomer` 的 profile。
-`display_name` 優先取 OAuth 帶回的 `full_name` / `name`，否則用 Email 前綴。
+`name` 優先取 OAuth 帶回的 `full_name` / `name`，否則用 Email 前綴。
 若同一 `user_id` 已存在（重複執行 migration 或少見重建情境），`ON CONFLICT DO NOTHING` 保持冪等。
 
 Staff 之後可透過 `UPDATE` 政策修改 role。
