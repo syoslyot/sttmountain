@@ -66,8 +66,16 @@ Preview generation:
 Upsert strategy:
 
 - `expedition_groups`: group activities share one `group_id`; solo expeditions get an independent group.
-- `expeditions`: unique by `drive_folder_id`.
-- `gpx_files`, `map_files`, `records`: unique by `drive_file_id`.
+- `expeditions`: unique by `drive_folder_id`. **Skip rows where `sync_locked = true`** — those have been manually edited and must not be overwritten by sync.
+- `gpx_files`, `map_files`, `record_files`: unique by `drive_file_id`.
+
+Sync lock check (pseudocode):
+
+```python
+existing = supabase.table('expeditions').select('sync_locked').eq('drive_folder_id', folder_id).maybe_single()
+if existing and existing['sync_locked']:
+    continue  # manual edit present; do not overwrite
+```
 
 Visibility:
 

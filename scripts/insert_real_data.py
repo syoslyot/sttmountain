@@ -41,11 +41,11 @@ def excel_preview(xlsx_path, out_png):
         build_a4_preview([p for p in [p1, p2] if p.exists()], Path(out_png))
     return Path(out_png).exists()
 
-def ins(conn, name, date_start, date_end, county, region, region_exit, leader,
+def ins(conn, name, date_start, date_end, county, region, region_exit, leader_display,
         extra_counties, gpx_list, map_list, rec_list):
     cur = conn.execute(
-        "INSERT INTO expeditions(name,date_start,date_end,county,region,region_exit,leader) VALUES (?,?,?,?,?,?,?)",
-        (name, date_start, date_end, county, region, region_exit, leader)
+        "INSERT INTO expeditions(name,date_start,date_end,county,region,region_exit,leader_display) VALUES (?,?,?,?,?,?,?)",
+        (name, date_start, date_end, county, region, region_exit, leader_display)
     )
     eid = cur.lastrowid
     for c in [county] + (extra_counties or []):
@@ -70,7 +70,7 @@ def main():
         name='茶茶牙頓出西都驕溪',
         date_start='2026-04-30', date_end='2026-05-03',
         county='台東', region='臺東縣達仁鄉', region_exit='屏東縣獅子鄉',
-        leader='程效賢',
+        leader_display='程效賢',
         extra_counties=['屏東'],
         gpx_list=['茶茶牙頓喝茶茶航跡_福利熊.gpx'],
         map_list=[('A3茶茶牙頓地圖.pdf','pdf'), ('A4西都驕溪地圖.pdf','pdf')],
@@ -81,7 +81,7 @@ def main():
         name='白雪村採樟腦（水山線）',
         date_start='2024-03-20', date_end='2024-03-22',
         county='南投', region='南投縣信義鄉', region_exit='嘉義縣阿里山鄉',
-        leader='李思誼',
+        leader_display='李思誼',
         extra_counties=['嘉義'],
         gpx_list=['阿里山：水山霞山_薰慈.GPX'],
         map_list=[('地圖_航機.jpg','image')],

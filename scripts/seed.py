@@ -75,13 +75,13 @@ LONG_RECORD = """\
 
 
 def ins(conn, name, date_start, date_end=None, county=None, region=None,
-        region_exit=None, leader=None, description=None,
+        region_exit=None, leader_display=None, description=None,
         extra_counties=None, gpx=None, maps=None, recs=None):
     cur = conn.execute(
         "INSERT OR IGNORE INTO expeditions"
-        "(name,date_start,date_end,county,region,region_exit,leader,description) "
+        "(name,date_start,date_end,county,region,region_exit,leader_display,description) "
         "VALUES (?,?,?,?,?,?,?,?)",
-        (name, date_start, date_end, county, region, region_exit, leader, description),
+        (name, date_start, date_end, county, region, region_exit, leader_display, description),
     )
     exp_id = cur.lastrowid
     if exp_id == 0:
@@ -119,7 +119,7 @@ def seed_edge_cases(conn):
         # ── 日期邊界 ──────────────────────────────────────────────────────────
         dict(  # E01 超長行程（30天）
             name="玉山大縱走30日隊", date_start="2023-07-01", date_end="2023-07-30",
-            county="南投", region="玉山", leader="陳志明",
+            county="南投", region="玉山", leader_display="陳志明",
             description="30天玉山周邊全區縱走，行程含主峰、北峰、東峰及各衛星峰。",
             gpx=["玉山大縱走30日隊_主線.gpx", "玉山大縱走30日隊_支線.gpx"],
             maps=[("玉山大縱走30日隊.pdf", "pdf")],
@@ -127,27 +127,27 @@ def seed_edge_cases(conn):
         ),
         dict(  # E02 單日健行（date_end == date_start）
             name="陽明山單日健行隊", date_start="2024-03-15", date_end="2024-03-15",
-            county="台北", region="陽明山", leader="林雅惠",
+            county="台北", region="陽明山", leader_display="林雅惠",
             description="七星山主峰單日來回，適合初學者。",
             gpx=["陽明山單日健行隊.gpx"],
         ),
         dict(  # E03 無結束日期
             name="合歡山探勘隊", date_start="2022-11-20",
-            county="台中", region="合歡山", leader="黃建宏",
+            county="台中", region="合歡山", leader_display="黃建宏",
             description="合歡山冬季雪景探查，日期未定回程。",
             gpx=["合歡山探勘隊.gpx"],
             maps=[("合歡山探勘隊.pdf", "pdf")],
         ),
         dict(  # E04 跨年出隊（12/28 → 1/5）
             name="跨年霞喀羅古道縱走隊", date_start="2023-12-28", date_end="2024-01-05",
-            county="新竹", region="霞喀羅", leader="王怡君",
+            county="新竹", region="霞喀羅", leader_display="王怡君",
             description="跨年縱走霞喀羅古道，行程橫跨兩個年度。",
             gpx=["跨年霞喀羅古道縱走隊.gpx"],
             recs=[("跨年日誌.txt", "12/31夜間在山屋舉辦跨年活動，隊員士氣高昂。")],
         ),
         dict(  # E05 古老資料（2010年）
             name="雪山早期探勘隊", date_start="2010-05-03", date_end="2010-05-07",
-            county="苗栗", region="雪霸", leader="方建國",
+            county="苗栗", region="雪霸", leader_display="方建國",
             description="2010年舊資料匯入，原始記錄可能不完整。",
         ),
 
@@ -158,12 +158,12 @@ def seed_edge_cases(conn):
         ),
         dict(  # E07 無縣市、無地區
             name="無地區資料出隊", date_start="2021-06-01", date_end="2021-06-02",
-            leader="孫志強",
+            leader_display="孫志強",
             description="資料匯入時縣市欄位遺失，系統應能正常顯示。",
         ),
         dict(  # E08 完全無附件（無GPX、無地圖、無紀錄）
             name="南橫溯溪隊", date_start="2024-09-01", date_end="2024-09-03",
-            county="高雄", region="南橫", leader="蔡宗翰",
+            county="高雄", region="南橫", leader_display="蔡宗翰",
             description="此出隊無任何附件上傳。",
         ),
 
@@ -171,7 +171,7 @@ def seed_edge_cases(conn):
         dict(  # E09 跨兩縣市
             name="能高越嶺古道縱走隊", date_start="2024-04-20", date_end="2024-04-24",
             county="南投", region="能高越嶺", region_exit="奇萊山",
-            leader="鄭淑芬",
+            leader_display="鄭淑芬",
             description="由南投入山，越嶺後由花蓮出山。",
             extra_counties=["花蓮"],
             gpx=["能高越嶺古道縱走隊.gpx"],
@@ -181,7 +181,7 @@ def seed_edge_cases(conn):
         dict(  # E10 跨三縣市縱走
             name="中央山脈北一段縱走隊", date_start="2023-09-10", date_end="2023-09-18",
             county="宜蘭", region="南湖大山", region_exit="玉里",
-            leader="謝志豪",
+            leader_display="謝志豪",
             description="北一段9天縱走，由宜蘭入，經花蓮，從台東出。",
             extra_counties=["花蓮", "台東"],
             gpx=["中央山脈北一段縱走隊_主線.gpx", "中央山脈北一段縱走隊_撤退路線.gpx"],
@@ -194,7 +194,7 @@ def seed_edge_cases(conn):
         dict(  # E11 跨四縣市（南橫全段）
             name="南橫公路全段縱走隊", date_start="2022-10-05", date_end="2022-10-14",
             county="台南", region="關子嶺", region_exit="知本",
-            leader="許雅雯",
+            leader_display="許雅雯",
             description="南橫全段，由台南關子嶺出發，經高雄、嘉義山區，抵台東知本。",
             extra_counties=["高雄", "嘉義", "台東"],
             gpx=["南橫公路全段縱走隊_主線.gpx"],
@@ -204,7 +204,7 @@ def seed_edge_cases(conn):
         # ── 附件極端情況 ──────────────────────────────────────────────────────
         dict(  # E12 超多GPX（5條路線）
             name="玉山五峰連登隊", date_start="2024-08-01", date_end="2024-08-07",
-            county="南投", region="玉山", leader="曾建志",
+            county="南投", region="玉山", leader_display="曾建志",
             description="七天連登玉山主峰、北峰、東峰、南峰、前峰，每峰各一條GPX。",
             gpx=[
                 "玉山五峰連登隊_主峰.gpx", "玉山五峰連登隊_北峰.gpx",
@@ -215,19 +215,19 @@ def seed_edge_cases(conn):
         ),
         dict(  # E13 純KML
             name="太魯閣KML測試隊", date_start="2024-05-10", date_end="2024-05-12",
-            county="花蓮", region="太魯閣", leader="蕭怡婷",
+            county="花蓮", region="太魯閣", leader_display="蕭怡婷",
             description="地圖資料為KML格式（非GPX），測試KML渲染。",
             gpx=["太魯閣KML測試隊.kml"],
         ),
         dict(  # E14 混合GPX+KML
             name="奇萊混合格式測試隊", date_start="2024-06-01", date_end="2024-06-03",
-            county="花蓮", region="奇萊山", leader="洪瑞祥",
+            county="花蓮", region="奇萊山", leader_display="洪瑞祥",
             description="同時包含GPX與KML格式，測試混合渲染。",
             gpx=["奇萊混合格式測試隊_主線.gpx", "奇萊混合格式測試隊_標記.kml"],
         ),
         dict(  # E15 超多紀錄（8人）
             name="拉拉山8人登頂隊", date_start="2023-05-20", date_end="2023-05-22",
-            county="桃園", region="拉拉山", leader="楊淑慧",
+            county="桃園", region="拉拉山", leader_display="楊淑慧",
             description="8位隊員各自撰寫出隊心得，測試多筆紀錄顯示。",
             recs=[
                 ("隊長紀錄_楊.txt", "此次行程天氣絕佳，拉拉山神木群景致壯觀，全員登頂成功。"),
@@ -242,7 +242,7 @@ def seed_edge_cases(conn):
         ),
         dict(  # E16 只有地圖無GPX
             name="北大武山地圖測試隊", date_start="2024-02-14", date_end="2024-02-17",
-            county="屏東", region="北大武山", leader="邱志偉",
+            county="屏東", region="北大武山", leader_display="邱志偉",
             description="僅有地圖PDF，無GPX軌跡，測試無地圖時的顯示狀況。",
             maps=[
                 ("北大武山地圖測試隊_地形圖.pdf", "pdf"),
@@ -253,7 +253,7 @@ def seed_edge_cases(conn):
         ),
         dict(  # E17 只有紀錄、無GPX無地圖
             name="古坑探查隊", date_start="2021-03-05", date_end="2021-03-06",
-            county="雲林", region="古坑", leader="賴雅琪",
+            county="雲林", region="古坑", leader_display="賴雅琪",
             description="老資料補錄，當時無GPS設備，僅有文字紀錄。",
             recs=[
                 ("紀錄一.txt", "古坑一日健行，步道整修中，部分路段需繞行，全程約5小時。"),
@@ -265,13 +265,13 @@ def seed_edge_cases(conn):
         dict(  # E18 超長出隊名稱
             name="成功大學登山社一○七學年度第二學期期末大型多日縱走聯合出隊",
             date_start="2019-06-15", date_end="2019-06-22",
-            county="南投", region="合歡山", leader="潘志遠",
+            county="南投", region="合歡山", leader_display="潘志遠",
             description="學年度聯合出隊，全社共42人參加。",
             gpx=["成功大學登山社聯合出隊.gpx"],
         ),
         dict(  # E19 超長描述
             name="大雪山深度探勘隊", date_start="2023-10-01", date_end="2023-10-05",
-            county="台中", region="大雪山", leader="鍾雅玲",
+            county="台中", region="大雪山", leader_display="鍾雅玲",
             description=(
                 "大雪山林道全段探勘計畫，目標建立完整的林道資料庫。"
                 "此次行程共計5天，預計走完大雪山國家森林遊樂區全區主要步道，"
@@ -292,7 +292,7 @@ def seed_edge_cases(conn):
             date_start=(date(2020, 1, 1) + timedelta(days=i * 20)).strftime("%Y-%m-%d"),
             date_end=(date(2020, 1, 1) + timedelta(days=i * 20 + 2)).strftime("%Y-%m-%d"),
             county="嘉義", region="阿里山",
-            leader=random.choice(LEADER_NAMES),
+            leader_display=random.choice(LEADER_NAMES),
             description=f"阿里山第{i+1}期例行健行，天氣良好。",
             gpx=[f"阿里山健行隊第{i+1:02d}期.gpx"] if i % 2 == 0 else None,
         ) for i in range(25)],  # 25筆同地區 → 超過 PAGE=20，觸發分頁
@@ -322,7 +322,7 @@ def seed_random(conn, n=100):
             d_end = d_start + timedelta(days=random.randint(1, 10))
         date_start = d_start.strftime("%Y-%m-%d")
         date_end = d_end.strftime("%Y-%m-%d") if d_end else None
-        leader = random.choice(LEADER_NAMES) if random.random() < 0.85 else None
+        leader_display = random.choice(LEADER_NAMES) if random.random() < 0.85 else None
         description = f"{county}{region}登山活動，行程{(d_end - d_start).days}天。" if d_end else None
 
         gpx, maps, recs = [], [], []
@@ -353,7 +353,7 @@ def seed_random(conn, n=100):
                 ))
 
         exp_id = ins(conn, name=name, date_start=date_start, date_end=date_end,
-                     county=county, region=region, leader=leader, description=description,
+                     county=county, region=region, leader_display=leader_display, description=description,
                      gpx=gpx or None, maps=maps or None, recs=recs or None)
         if exp_id:
             inserted += 1

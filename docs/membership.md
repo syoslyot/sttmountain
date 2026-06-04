@@ -80,9 +80,19 @@ Staff 之後可透過 `UPDATE` 政策修改 role。
 
 ## 與現有 expedition 資料的關係
 
-`user_profiles` 和現有的 `expeditions.leader`（字串欄位）無直接關聯。
-「領隊」欄位記錄的是出隊紀錄的文字資訊，與會員系統的 `role` 無關。
-未來認領隊伍時（`expedition_claims`，尚未實作），才會建立 user_id → expedition_id 的連結。
+`user_profiles` 和現有的 `expeditions.leader_display`（字串欄位）無直接關聯。`leader_display` 是出隊紀錄的顯示文字，與會員系統的 `role` 無關。
+
+認領功能透過 `expedition_members` 表建立 `user_id` → `expedition_id` 的連結：
+
+| 欄位 | 說明 |
+| --- | --- |
+| `expedition_id` | FK → `expeditions.id` |
+| `user_id` | FK → `auth.users.id` |
+| `role` | `leader` / `member` |
+| `status` | `pending` / `approved` / `rejected` |
+| `evidence` | 認領佐證說明（text） |
+
+相關 RPC：`submit_expedition_claim`、`list_pending_claims`（staff）、`review_expedition_claim`（staff）。詳見 `docs/database.md`。
 
 ## 環境變數（sttmountaincrazy 側需補）
 
