@@ -51,8 +51,9 @@ python3 -c "from app.main import app; print('Import OK')"
 | [CONTRIBUTING.md](CONTRIBUTING.md) | 開發流程、PR 規則、commit 規範 |
 | [docs/architecture.md](docs/architecture.md) | 系統邊界、資料流、目錄分工 |
 | [docs/upload-data.md](docs/upload-data.md) | 幹部如何在 Google Drive 上傳資料 |
-| [docs/sync-flow.md](docs/sync-flow.md) | `sync_drive.py` 與 `normalize.py` 流程 |
-| [docs/database.md](docs/database.md) | schema、migration、RPC、RLS、dev/prod 套用 |
+| [docs/sync-flow.md](docs/sync-flow.md) | `sync_drive.py` 與 `normalize.py` 流程，含 `sync_locked` 跳過規則 |
+| [docs/database.md](docs/database.md) | schema、migration、RPC、RLS、dev/prod 套用，含 `sync_locked` 欄位說明 |
+| [docs/membership.md](docs/membership.md) | 會員系統、角色定義、`expedition_members` 認領流程 |
 | [docs/deployment.md](docs/deployment.md) | GitHub Actions、GHCR、Watchtower、環境變數 |
 | [docs/git-flow.md](docs/git-flow.md) | branch、release、hotfix 流程 |
 | [docs/troubleshooting.md](docs/troubleshooting.md) | 常見問題與排查步驟 |

@@ -243,7 +243,7 @@ def parse_p1(ws) -> dict:
     date_end   = roc_to_iso(cell_value(ws, "C4"))
     entry_loc  = cell_value(ws, "F3")
     exit_loc   = cell_value(ws, "F4")
-    leader     = cell_value(ws, "C17") or None
+    leader_display = cell_value(ws, "C17") or None
     entry_county, entry_town = extract_county_town(entry_loc)
     exit_county,  exit_town  = extract_county_town(exit_loc)
     return {
@@ -254,7 +254,7 @@ def parse_p1(ws) -> dict:
         "region_entry_town":   entry_town,
         "region_exit_county":  exit_county,
         "region_exit_town":    exit_town,
-        "leader":              leader,
+        "leader_display":      leader_display,
     }
 
 
