@@ -1,17 +1,12 @@
 """
-從 Google Drive 同步出隊資料到本機，並產生 data/raw/sync_meta.json。
+【舊資料一次性匯入】從 Google Drive 同步 2026-06-08 之前的出隊資料，產生 data/raw/sync_meta_legacy.json。
 
-Drive 結構（2026-06-08 後的新格式）：
+Drive 結構（舊格式，2026-06-08 之前）：
   所有出隊資料夾/
     [{天數}{級數}{類別}]{隊伍名稱}_{日期}/
-      [{天數}{級數}{類別}]{隊伍名稱}_{日期}_AllInOne_直企.xlsx
-      行後航跡與紀錄/         ← gpx, kml, txt, md, docx, pdf, Google Doc，可含子資料夾
+      {隊伍名稱}_直企.xlsx
+      上繳航跡與紀錄/         ← gpx, kml, txt, md, docx, pdf, Google Doc，可含子資料夾
       地圖/                   ← pdf, docx, jpg, png, jpeg，可含子資料夾
-    {活動名稱}/               ← 大眾化：資料夾含子資料夾
-      [{天數}{級數}{類別}]{隊伍名稱}_{日期}/
-        [{天數}{級數}{類別}]{隊伍名稱}_{日期}_AllInOne_直企.xlsx
-        行後航跡與紀錄/
-        地圖/
 
 環境變數：
   GDRIVE_CREDENTIALS_JSON  — Service Account JSON 內容
@@ -39,7 +34,7 @@ load_dotenv(os.environ.get("ENV_FILE", ".env.local"), override=True)
 
 # ── 常數 ────────────────────────────────────────────────────
 
-IMPORT_CUTOFF_DATE = date(2026, 6, 8)
+LEGACY_CUTOFF_DATE = date(2026, 6, 8)  # 此日期（含）以後的資料夾跳過，由新 sync_drive.py 處理
 
 SCOPES = ["https://www.googleapis.com/auth/drive.readonly"]
 
@@ -48,10 +43,10 @@ XLSX_DIR = RAW_DIR / "xlsx"
 TXT_DIR  = RAW_DIR / "txt"
 GPX_DIR  = Path(__file__).parent.parent / "app" / "static" / "gpx"
 MAPS_DIR = Path(__file__).parent.parent / "app" / "static" / "maps"
-META_PATH = RAW_DIR / "sync_meta.json"
+META_PATH = RAW_DIR / "sync_meta_legacy.json"
 
 MAP_FOLDER_NAMES = {"地圖"}
-SUBMISSION_FOLDER_NAMES = {"行後航跡與紀錄"}
+SUBMISSION_FOLDER_NAMES = {"上繳航跡與紀錄"}
 
 ZHIJIAN_EXTS = {".xlsx", ".xls", ".numbers"}
 GPX_EXTS    = {".gpx", ".kml"}
@@ -471,7 +466,7 @@ def main():
         if not created:
             continue
         created_date = parse_dt(created).date()
-        if created_date < IMPORT_CUTOFF_DATE:
+        if created_date >= LEGACY_CUTOFF_DATE:
             continue
 
         is_new = parse_dt(created) > last_synced_at
