@@ -85,8 +85,8 @@ jobs:
 
       - name: Sync from Google Drive
         env:
-          GDRIVE_CREDENTIALS_JSON: ${{ secrets.GDRIVE_CREDENTIALS_JSON }}
-          GDRIVE_ROOT_FOLDER_ID: ${{ secrets.GDRIVE_ROOT_FOLDER_ID }}
+          GDRIVE_CREDENTIALS_JSON: ${{ inputs.target_db == 'dev' && secrets.GDRIVE_CREDENTIALS_JSON_DEV || secrets.GDRIVE_CREDENTIALS_JSON }}
+          GDRIVE_ROOT_FOLDER_ID: ${{ inputs.target_db == 'dev' && secrets.GDRIVE_ROOT_FOLDER_ID_DEV || secrets.GDRIVE_ROOT_FOLDER_ID }}
           SUPABASE_URL: ${{ inputs.target_db == 'dev' && secrets.SUPABASE_URL_DEV || secrets.SUPABASE_URL }}
           SUPABASE_SERVICE_KEY: ${{ inputs.target_db == 'dev' && secrets.SUPABASE_SERVICE_KEY_DEV || secrets.SUPABASE_SERVICE_KEY }}
         run: python3 scripts/sync_drive.py

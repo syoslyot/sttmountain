@@ -29,14 +29,16 @@ second, so both databases stay aligned.
 | Table | Purpose |
 | --- | --- |
 | `expedition_groups` | Activity/group container. Group activities share one row; solo expeditions get their own group. |
-| `expeditions` | Main expedition rows: name, dates, regions, leader, grade, preview image. |
+| `expeditions` | Main expedition rows: name, dates, regions, leader, grade, preview image, transport, keeper, participants, sync_locked. |
 | `expedition_counties` | Counties indexed for entry/exit region filtering. |
+| `expedition_members` | Tracks leader claims and member participation. `role` = `leader`/`member`; `status` = `pending`/`approved`/`rejected`. Used for the claim and edit workflow. |
 | `gpx_files` | GPX/KML Storage file metadata. |
 | `map_files` | Map PDF/image Storage file metadata. |
-| `records` | Submitted record metadata and extracted text/file path. |
+| `record_files` | Submitted record metadata and extracted text/file path. (Renamed from `records` in migration 0019.) |
 | `sync_state` | Stores sync cursor such as `last_synced_at`. |
 | `sync_logs` | Sync run status, counts, errors, and log text. |
 | `schema_migrations` | Records manually applied SQL migration versions. |
+| `user_profiles` | Member role and display name, linked to `auth.users`. See [membership.md](membership.md). |
 
 ## Storage Buckets
 
@@ -45,7 +47,7 @@ second, so both databases stay aligned.
 | `gpx` | GPX / KML track files |
 | `maps` | Map PDFs and images |
 | `previews` | Expedition plan preview images |
-| `records` | Original submitted record files |
+| `records` | Original submitted record files (bucket name unchanged; only the DB table was renamed) |
 
 ## RLS and Access
 
@@ -161,9 +163,20 @@ ENV_FILE=.env python3 scripts/normalize.py
 list_expeditions(p_q, p_county, p_counties, p_start, p_end, p_page, p_page_size, p_grade, p_sort)
 get_expedition_dates()
 get_expedition_years()
+list_unclaimed_expeditions()
+submit_expedition_claim(p_expedition_id, p_evidence)
+list_pending_claims()                              -- staff only
+review_expedition_claim(p_claim_id, p_action)      -- staff only
+update_expedition(p_id, p_name, p_grade, p_date_start, p_date_end,
+                  p_region_entry_county, p_region_entry_town,
+                  p_region_exit_county, p_region_exit_town,
+                  p_leader_display, p_transport, p_keeper,
+                  p_participants, p_sync_locked)
 ```
 
 ### `list_expeditions()`
+
+Only returns expeditions that have at least one **approved** leader in `expedition_members`. Expeditions without an approved leader are hidden from public listing.
 
 `list_expeditions()` returns:
 
@@ -198,6 +211,31 @@ gpx_count, map_count, rec_count
 ```
 
 Do not synthesize missing intermediate years in the frontend.
+
+## expeditions Extra Columns
+
+Columns added after the initial schema:
+
+| Column | Migration | Notes |
+| --- | --- | --- |
+| `transport` text | 0024 | Transportation method (free text) |
+| `keeper` text | 0024 | Emergency keeper name (free text) |
+| `participants` integer | 0024 | Headcount |
+| `sync_locked` bool | 0026 | When `true`, the sync script must skip updating this row. Set automatically when a user saves via the edit page. Only staff may reset it to `false`. |
+
+## Sync Lock
+
+`expeditions.sync_locked = true` means manual edits exist and Google Drive data must not overwrite them.
+
+The `normalize.py` upsert step must check `sync_locked` before updating existing rows:
+
+```python
+# Skip rows where sync_locked is already true
+if existing_row.get('sync_locked'):
+    continue
+```
+
+Staff can reset `sync_locked = false` via the edit page to re-enable sync for a row.
 
 ## Public Visibility
 

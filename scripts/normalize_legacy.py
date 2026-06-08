@@ -1,9 +1,10 @@
 """
-讀取 sync_meta.json，解析直企 xlsx，寫入 Supabase，生成 P1+P2 截圖上傳 Storage。
+【舊資料一次性匯入】讀取 sync_meta_legacy.json，解析直企 xlsx，寫入 Supabase，生成 P1+P2 截圖上傳 Storage。
+不更新 last_synced_at，避免影響日常 sync 的時間戳記。
 
 用法：
-  python3 scripts/normalize.py                      # 讀 data/raw/sync_meta.json
-  python3 scripts/normalize.py path/to/sync_meta.json
+  python3 scripts/normalize_legacy.py                      # 讀 data/raw/sync_meta_legacy.json
+  python3 scripts/normalize_legacy.py path/to/sync_meta.json
 
 環境變數：
   SUPABASE_URL          — Supabase project URL
@@ -36,7 +37,7 @@ SUPABASE_URL = os.environ["SUPABASE_URL"]
 SUPABASE_KEY = os.environ["SUPABASE_SERVICE_KEY"]
 supabase: Client = create_client(SUPABASE_URL, SUPABASE_KEY)
 
-META_PATH       = Path(__file__).parent.parent / "data" / "raw" / "sync_meta.json"
+META_PATH       = Path(__file__).parent.parent / "data" / "raw" / "sync_meta_legacy.json"
 STATIC_PREVIEWS = Path(__file__).parent.parent / "app" / "static" / "previews"
 
 COUNTY_NORMALIZE = {
@@ -501,8 +502,7 @@ def main():
         except Exception as e:
             print(f"  ✗ 錯誤：{e}")
 
-    update_last_synced_at(meta["synced_at"])
-    print(f"\nnormalize complete, last_synced_at → {meta['synced_at']}")
+    print(f"\nlegacy normalize complete（last_synced_at 不更新）")
 
     sys.stdout = _tee._real
     _append_normalize_log(_tee.getvalue())
