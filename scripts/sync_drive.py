@@ -247,16 +247,16 @@ def _is_zhijian_candidate(item: dict) -> bool:
     return Path(item["name"]).suffix.lower() in ZHIJIAN_EXTS
 
 
-def find_zhijian_file(items: list[dict], team_title: str) -> dict | None:
+def find_zhijian_file(items: list[dict]) -> dict | None:
     """在直接子項目中找直企檔。
-    匹配規則：檔名含「直企」、「AllInOne」，或含隊伍名稱。
+    匹配規則：檔名含「直企」或「AllInOne」。
     """
     for item in items:
         if is_folder(item):
             continue
         if not _is_zhijian_candidate(item):
             continue
-        if "直企" in item["name"] or "AllInOne" in item["name"] or (team_title and team_title in item["name"]):
+        if "直企" in item["name"] or "AllInOne" in item["name"]:
             return item
     return None
 
@@ -280,7 +280,7 @@ def classify_top_folder(service, folder: dict) -> tuple[str, list[dict], dict | 
         if not is_folder(item) or not is_team_folder_name(item["name"]):
             continue
         sub_items = list_folder(service, item["id"])
-        sub_zhijian = find_zhijian_file(sub_items, extract_team_title(item["name"]))
+        sub_zhijian = find_zhijian_file(sub_items)
         if sub_zhijian:
             team_entries.append((item, sub_items, sub_zhijian))
 
@@ -289,7 +289,7 @@ def classify_top_folder(service, folder: dict) -> tuple[str, list[dict], dict | 
 
     # 子資料夾中無隊伍資料夾：父層本身若符合命名規則則視為 solo
     if is_team_folder_name(folder["name"]):
-        zhijian = find_zhijian_file(items, extract_team_title(folder["name"]))
+        zhijian = find_zhijian_file(items)
         if zhijian:
             return "solo", items, zhijian, []
 

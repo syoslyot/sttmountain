@@ -41,7 +41,7 @@ def test_classify_top_folder_requires_team_name_and_zhijian(monkeypatch, sd):
     top = folder(sd, "top", "[2D活]舊古樓嘍嘍_20260418")
     tree = {
         "top": [
-            file(sd, "xlsx", "舊古樓嘍嘍計畫書.xlsx"),
+            file(sd, "xlsx", "舊古樓嘍嘍直企.xlsx"),
             folder(sd, "submission", "上繳航跡與紀錄"),
         ],
     }
@@ -73,7 +73,7 @@ def test_classify_group_uses_only_valid_team_children_with_zhijian(monkeypatch, 
     invalid_team = folder(sd, "team-c", "工作資料")
     tree = {
         "top": [valid_team, no_zhijian, invalid_team],
-        "team-a": [file(sd, "numbers", "眠月線.numbers")],
+        "team-a": [file(sd, "numbers", "眠月線直企.numbers")],
         "team-b": [file(sd, "readme", "說明.txt")],
         "team-c": [file(sd, "xlsx", "工作資料直企.xlsx")],
     }
