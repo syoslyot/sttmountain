@@ -13,11 +13,13 @@
 import hashlib
 import io
 import json
+import math
 import os
 import re
 import subprocess
 import sys
 import tempfile
+import xml.etree.ElementTree as ET
 from pathlib import Path
 
 import fitz
@@ -111,8 +113,65 @@ def storage_safe_name(filename: str) -> str:
         return f"{name_hash}{suffix}"
 
 
-def storage_upload(bucket: str, path: str, local_path: Path, content_type: str):
-    data = local_path.read_bytes()
+_GPX_NS = "http://www.topografix.com/GPX/1/1"
+
+
+def _rdp_keep(pts: list[tuple[float, float]], eps: float) -> set[int]:
+    n = len(pts)
+    if n < 3:
+        return set(range(n))
+    keep = bytearray(n)
+    keep[0] = keep[n - 1] = 1
+    stack = [(0, n - 1)]
+    while stack:
+        s, e = stack.pop()
+        dx, dy = pts[e][0] - pts[s][0], pts[e][1] - pts[s][1]
+        ls = dx * dx + dy * dy
+        max_d, idx = 0.0, s
+        for i in range(s + 1, e):
+            t = max(0.0, min(1.0, ((pts[i][0]-pts[s][0])*dx + (pts[i][1]-pts[s][1])*dy) / ls)) if ls else 0.0
+            d = math.hypot(pts[i][0]-pts[s][0]-t*dx, pts[i][1]-pts[s][1]-t*dy)
+            if d > max_d:
+                max_d, idx = d, i
+        if max_d > eps:
+            keep[idx] = 1
+            stack.extend([(s, idx), (idx, e)])
+    return {i for i, v in enumerate(keep) if v}
+
+
+def simplify_gpx(data: bytes, epsilon: float = 0.0001) -> tuple[bytes, int, int]:
+    """RDP simplification + 5-decimal rounding on GPX trkpt data.
+    Returns (simplified_bytes, points_before, points_after).
+    """
+    namespaces = {p: u for _, (p, u) in ET.iterparse(io.BytesIO(data), events=["start-ns"])}
+    for prefix, uri in namespaces.items():
+        ET.register_namespace(prefix, uri)
+    ET.register_namespace("", _GPX_NS)
+
+    root = ET.fromstring(data)
+    total_before = total_after = 0
+
+    for trkseg in root.findall(f".//{{{_GPX_NS}}}trkseg"):
+        trkpts = trkseg.findall(f"{{{_GPX_NS}}}trkpt")
+        if not trkpts:
+            continue
+        pts = [(float(t.get("lat")), float(t.get("lon"))) for t in trkpts]
+        kept = _rdp_keep(pts, epsilon)
+        total_before += len(trkpts)
+        total_after += len(kept)
+        for i, trkpt in enumerate(trkpts):
+            if i in kept:
+                trkpt.set("lat", str(round(float(trkpt.get("lat")), 5)))
+                trkpt.set("lon", str(round(float(trkpt.get("lon")), 5)))
+            else:
+                trkseg.remove(trkpt)
+
+    xml_str = '<?xml version="1.0" encoding="UTF-8"?>\n' + ET.tostring(root, encoding="unicode")
+    return xml_str.encode("utf-8"), total_before, total_after
+
+
+def storage_upload(bucket: str, path: str, source: "Path | bytes", content_type: str):
+    data = source if isinstance(source, bytes) else source.read_bytes()
     try:
         supabase.storage.from_(bucket).upload(
             path, data,
@@ -315,7 +374,13 @@ def process_gpx_files(expedition_id: int, file_entries: list[dict]):
         safe = storage_safe_name(f["name"])
         storage_path = f"{expedition_id}/{safe}"
         content_type = CONTENT_TYPE_MAP.get(local.suffix.lower(), "application/octet-stream")
-        storage_upload("gpx", storage_path, local, content_type)
+        if local.suffix.lower() == ".gpx":
+            simplified, before, after = simplify_gpx(local.read_bytes())
+            pct = (1 - after / before) * 100 if before else 0
+            print(f"    → GPX RDP: {before:,} → {after:,} pts ({pct:.0f}% removed)")
+            storage_upload("gpx", storage_path, simplified, content_type)
+        else:
+            storage_upload("gpx", storage_path, local, content_type)
         sync_file_record("gpx_files", expedition_id, f["drive_file_id"],
                          f["name"], {"file_path": storage_path})
 
