@@ -3,11 +3,16 @@
 
 Drive 結構（2026-06-08 後的新格式）：
   所有出隊資料夾/
-    [{天數}{級數}{類別}]{隊伍名稱}_{日期}/
+    [{天數}{級數}{類別}]{隊伍名稱}_{日期}/              ← solo：根目錄有直企檔
       [{天數}{級數}{類別}]{隊伍名稱}_{日期}_AllInOne_直企.xlsx
       行後航跡與紀錄/         ← gpx, kml, txt, md, docx, pdf, Google Doc，可含子資料夾
       地圖/                   ← pdf, docx, jpg, png, jpeg，可含子資料夾
-    {活動名稱}/               ← 大眾化：資料夾含子資料夾
+    [{天數}{級數}{類別}]{GROUP_NAME}_{日期}/            ← GROUP 容器（會師/大眾化），父層符合命名規則
+      [{天數}{級數}{類別}]{GROUP_NAME}_{路線名稱}_{日期}/
+        [{天數}{級數}{類別}]{GROUP_NAME}_{路線名稱}_{日期}_AllInOne_直企.xlsx
+        行後航跡與紀錄/
+        地圖/
+    {活動名稱}/                                        ← 舊式 GROUP 容器，父層不符命名規則
       [{天數}{級數}{類別}]{隊伍名稱}_{日期}/
         [{天數}{級數}{類別}]{隊伍名稱}_{日期}_AllInOne_直企.xlsx
         行後航跡與紀錄/
@@ -260,14 +265,16 @@ def classify_top_folder(service, folder: dict) -> tuple[str, list[dict], dict | 
     """
     回傳 (kind, items, zhijian_item, team_entries)
     kind: 'solo' | 'group' | 'skip'
+
+    判斷順序：
+    1. 若直接子資料夾中有符合命名規則的子資料夾 → GROUP 容器（會師/大眾化）。
+       不論父層資料夾本身是否符合命名規則，只要有子隊伍資料夾就視為容器。
+    2. 否則，若父層資料夾本身符合命名規則 → solo（需有直企檔）。
+    3. 以上皆不符 → skip。
     """
     items = list_folder(service, folder["id"])
-    if is_team_folder_name(folder["name"]):
-        zhijian = find_zhijian_file(items, extract_team_title(folder["name"]))
-        if zhijian:
-            return "solo", items, zhijian, []
-        return "skip", items, None, []
 
+    # 先掃子資料夾：若有任何子資料夾符合命名規則，此資料夾是 GROUP 容器
     team_entries = []
     for item in items:
         if not is_folder(item) or not is_team_folder_name(item["name"]):
@@ -279,6 +286,12 @@ def classify_top_folder(service, folder: dict) -> tuple[str, list[dict], dict | 
 
     if team_entries:
         return "group", items, None, team_entries
+
+    # 子資料夾中無隊伍資料夾：父層本身若符合命名規則則視為 solo
+    if is_team_folder_name(folder["name"]):
+        zhijian = find_zhijian_file(items, extract_team_title(folder["name"]))
+        if zhijian:
+            return "solo", items, zhijian, []
 
     return "skip", items, None, []
 
