@@ -41,7 +41,7 @@ def test_classify_top_folder_requires_team_name_and_zhijian(monkeypatch, sd):
     top = folder(sd, "top", "[2D活]舊古樓嘍嘍_20260418")
     tree = {
         "top": [
-            file(sd, "xlsx", "舊古樓嘍嘍計畫書.xlsx"),
+            file(sd, "xlsx", "舊古樓嘍嘍直企.xlsx"),
             folder(sd, "submission", "上繳航跡與紀錄"),
         ],
     }
@@ -73,7 +73,7 @@ def test_classify_group_uses_only_valid_team_children_with_zhijian(monkeypatch, 
     invalid_team = folder(sd, "team-c", "工作資料")
     tree = {
         "top": [valid_team, no_zhijian, invalid_team],
-        "team-a": [file(sd, "numbers", "眠月線.numbers")],
+        "team-a": [file(sd, "numbers", "眠月線直企.numbers")],
         "team-b": [file(sd, "readme", "說明.txt")],
         "team-c": [file(sd, "xlsx", "工作資料直企.xlsx")],
     }
@@ -84,6 +84,42 @@ def test_classify_group_uses_only_valid_team_children_with_zhijian(monkeypatch, 
     assert kind == "group"
     assert zhijian is None
     assert [team[0]["id"] for team in teams] == ["team-a"]
+
+
+def test_classify_group_container_with_team_named_parent(monkeypatch, sd):
+    """父層名稱符合命名規則但內含子隊伍資料夾（會師/大眾化）→ GROUP，不當 solo 處理。"""
+    top = folder(sd, "top", "[3D活]關山會師_20260710")
+    team_a = folder(sd, "team-a", "[3D活]關山會師_北大武路線_20260710")
+    team_b = folder(sd, "team-b", "[3D活]關山會師_南大武路線_20260710")
+    tree = {
+        "top": [team_a, team_b],
+        "team-a": [file(sd, "xlsx-a", "[3D活]關山會師_北大武路線_20260710_AllInOne_直企.xlsx")],
+        "team-b": [file(sd, "xlsx-b", "[3D活]關山會師_南大武路線_20260710_AllInOne_直企.xlsx")],
+    }
+    patch_tree(monkeypatch, sd, tree)
+
+    kind, _items, zhijian, teams = sd.classify_top_folder(None, top)
+
+    assert kind == "group"
+    assert zhijian is None
+    assert [t[0]["id"] for t in teams] == ["team-a", "team-b"]
+
+
+def test_classify_group_container_team_named_parent_no_zhijian_skips(monkeypatch, sd):
+    """父層名稱符合命名規則，有子隊伍資料夾但都沒直企 → SKIP（直企尚未上傳）。"""
+    top = folder(sd, "top", "[3D活]關山會師_20260710")
+    team_a = folder(sd, "team-a", "[3D活]關山會師_北大武路線_20260710")
+    tree = {
+        "top": [team_a],
+        "team-a": [file(sd, "readme", "說明.txt")],
+    }
+    patch_tree(monkeypatch, sd, tree)
+
+    kind, _items, zhijian, teams = sd.classify_top_folder(None, top)
+
+    assert kind == "skip"
+    assert zhijian is None
+    assert teams == []
 
 
 def test_sync_expedition_files_recurses_and_classifies_supported_files(monkeypatch, sd, tmp_path):
