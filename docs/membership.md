@@ -4,7 +4,8 @@
 
 ## Migration
 
-`db/migrations/0005_membership.sql`
+初始 schema：`db/migrations/0005_membership.sql`
+角色更名：`db/migrations/0042_rename_member_roles.sql`
 
 套用順序：dev → 驗證 → prod（同 `docs/database.md` 標準流程）。
 
@@ -12,10 +13,10 @@
 
 | Role value | 中文名稱 | 說明 |
 | --- | --- | --- |
-| `staff` | 資料組管理員 | 可讀寫所有 user_profiles，負責指派角色 |
-| `member` | 山協隊員 | 通過隊員考試的社員 |
-| `newcomer` | 山協新生 | 尚未通過隊員考試的社員 |
-| `partner` | 校外夥伴 | 非成大山協社員的外部合作者 |
+| `curator` | 山協資料組 | 可讀寫所有 user_profiles，負責指派角色與審核認領 |
+| `ranger` | 山協隊員 | 通過隊員考試的社員 |
+| `cadet` | 山協新生 | 尚未通過隊員考試的社員 |
+| `associate` | 山協會員 | 非成大山協社員的外部合作者 |
 
 > 角色名稱刻意避開 `admin`，以免與 Supabase service role 或其他系統的 admin 概念混淆。
 
@@ -36,19 +37,19 @@ create table public.user_profiles (
 | 政策 | 操作 | 說明 |
 | --- | --- | --- |
 | `select own profile` | SELECT | 登入使用者讀自己的 profile |
-| `staff select all` | SELECT | staff 讀所有 profile |
-| `staff insert` | INSERT | 只有 staff 可新增 |
-| `staff update` | UPDATE | 只有 staff 可修改 role |
+| `curator select all` | SELECT | curator 讀所有 profile |
+| `curator insert` | INSERT | 只有 curator 可新增 |
+| `curator update` | UPDATE | 只有 curator 可修改 role |
 
-### 初始化第一個 staff 帳號
+### 初始化第一個 curator 帳號
 
-第一個 staff 需由 Supabase Dashboard（Table Editor）或 service role 手動插入，
-因為尚無任何 staff 紀錄可觸發 INSERT policy。
+第一個 curator 需由 Supabase Dashboard（Table Editor）或 service role 手動插入，
+因為尚無任何 curator 紀錄可觸發 INSERT policy。
 
 ```sql
 -- 先在 Auth > Users 建立帳號，取得 user_id，再執行：
 insert into public.user_profiles (user_id, role, name)
-values ('<uuid>', 'staff', '資料組');
+values ('<uuid>', 'curator', '資料組');
 ```
 
 ## 認證方式
@@ -62,7 +63,7 @@ values ('<uuid>', 'staff', '資料組');
 | Facebook OAuth | 以 Facebook 帳號登入 |
 
 OAuth 在 Supabase Dashboard > Authentication > Providers 啟用，不需額外 SQL。
-首次登入時，`auth.users` 中會自動建立一筆記錄；`0006_auth_trigger.sql` 中的 trigger 再自動建立對應的 `user_profiles`（role 預設為 `newcomer`）。
+首次登入時，`auth.users` 中會自動建立一筆記錄；`0006_auth_trigger.sql` 中的 trigger 再自動建立對應的 `user_profiles`（role 預設為 `cadet`）。
 
 ### `user_id` 說明
 
@@ -72,11 +73,11 @@ OAuth 在 Supabase Dashboard > Authentication > Providers 啟用，不需額外 
 
 ## Auto-create trigger（0006_auth_trigger.sql）
 
-任何新帳號（Email 或 OAuth）在 `auth.users` 建立時，trigger 自動在 `user_profiles` 插入一筆 `newcomer` 的 profile。
+任何新帳號（Email 或 OAuth）在 `auth.users` 建立時，trigger 自動在 `user_profiles` 插入一筆 `cadet` 的 profile。
 `name` 優先取 OAuth 帶回的 `full_name` / `name`，否則用 Email 前綴。
 若同一 `user_id` 已存在（重複執行 migration 或少見重建情境），`ON CONFLICT DO NOTHING` 保持冪等。
 
-Staff 之後可透過 `UPDATE` 政策修改 role。
+Curator 之後可透過 `UPDATE` 政策修改 role。
 
 ## 與現有 expedition 資料的關係
 
@@ -92,7 +93,7 @@ Staff 之後可透過 `UPDATE` 政策修改 role。
 | `status` | `pending` / `approved` / `rejected` |
 | `evidence` | 認領佐證說明（text） |
 
-相關 RPC：`submit_expedition_claim`、`list_pending_claims`（staff）、`review_expedition_claim`（staff）。詳見 `docs/database.md`。
+相關 RPC：`submit_expedition_claim`、`list_pending_claims`（curator）、`review_expedition_claim`（curator）。詳見 `docs/database.md`。
 
 ## 環境變數（sttmountaincrazy 側需補）
 
