@@ -20,6 +20,7 @@ import subprocess
 import sys
 import tempfile
 import xml.etree.ElementTree as ET
+from datetime import datetime, timezone
 from pathlib import Path
 
 import fitz
@@ -330,10 +331,14 @@ def upsert_group(drive_folder_id: str, name: str) -> int:
     return result.data[0]["id"]
 
 
-def upsert_expedition(drive_folder_id: str, group_id: int, fields: dict) -> tuple[int, bool]:
+def upsert_expedition(drive_folder_id: str, group_id: int, fields: dict,
+                      update_existing: bool) -> tuple[int, bool]:
     existing = supabase.table("expeditions").select("id").eq("drive_folder_id", drive_folder_id).execute()
     if existing.data:
-        return existing.data[0]["id"], False
+        exp_id = existing.data[0]["id"]
+        if update_existing:
+            supabase.table("expeditions").update(fields).eq("id", exp_id).execute()
+        return exp_id, False
     result = supabase.table("expeditions").insert({
         "drive_folder_id": drive_folder_id,
         "group_id": group_id,
@@ -463,7 +468,7 @@ def generate_and_upload_preview(xlsx_path: Path, exp_id: int):
 
 # ── 主流程 ───────────────────────────────────────────────────
 
-def process_expedition(entry: dict, group_id: int):
+def process_expedition(entry: dict, group_id: int, last_synced_at: datetime):
     xlsx_info = entry.get("xlsx")
     if not xlsx_info:
         print(f"  ⚠ 無直企資訊，跳過 {entry['name']}")
@@ -486,7 +491,12 @@ def process_expedition(entry: dict, group_id: int):
         print(f"  ⚠ 無法解析 date_start，跳過")
         return
 
-    exp_id, is_new = upsert_expedition(entry["drive_folder_id"], group_id, fields)
+    modified = xlsx_info.get("modified_time")
+    zhijian_changed = bool(modified) and parse_dt(modified) > last_synced_at
+
+    exp_id, is_new = upsert_expedition(
+        entry["drive_folder_id"], group_id, fields, update_existing=zhijian_changed
+    )
 
     counties = {c for c in (fields["region_entry_county"], fields["region_exit_county"]) if c}
     if counties:
@@ -496,11 +506,22 @@ def process_expedition(entry: dict, group_id: int):
     process_map_files(exp_id, entry.get("map_files", []))
     process_record_files(exp_id, entry.get("record_files", []))
 
-    if is_new:
-        print(f"  ✓ 新增：{entry['name']}（id={exp_id}）")
+    if is_new or zhijian_changed:
+        print(f"  {'✓ 新增' if is_new else '↻ 直企更新'}：{entry['name']}（id={exp_id}）")
         generate_and_upload_preview(xlsx_path, exp_id)
     else:
         print(f"  → 更新檔案：{entry['name']}（id={exp_id}）")
+
+
+def parse_dt(s: str) -> datetime:
+    return datetime.fromisoformat(s.replace("Z", "+00:00"))
+
+
+def get_last_synced_at() -> datetime:
+    row = supabase.table("sync_state").select("value").eq("key", "last_synced_at").execute()
+    if row.data:
+        return parse_dt(row.data[0]["value"])
+    return datetime.fromtimestamp(0, tz=timezone.utc)
 
 
 def update_last_synced_at(synced_at: str):
@@ -547,12 +568,14 @@ def main():
         sys.exit(1)
 
     meta = json.loads(meta_path.read_text(encoding="utf-8"))
+    last_synced_at = get_last_synced_at()
+    print(f"last_synced_at: {last_synced_at.isoformat()}")
 
     for solo in meta.get("solos", []):
         print(f"\n處理（solo）：{solo['name']}")
         try:
             group_id = upsert_group(solo["drive_folder_id"], solo["name"])
-            process_expedition(solo, group_id)
+            process_expedition(solo, group_id, last_synced_at)
         except Exception as e:
             print(f"  ✗ 錯誤：{e}")
 
@@ -562,7 +585,7 @@ def main():
             group_id = upsert_group(group["drive_folder_id"], group["name"])
             for team in group.get("teams", []):
                 print(f"  隊伍：{team['name']}")
-                process_expedition(team, group_id)
+                process_expedition(team, group_id, last_synced_at)
         except Exception as e:
             print(f"  ✗ 錯誤：{e}")
 

@@ -123,7 +123,7 @@ def test_classify_group_container_team_named_parent_no_zhijian_skips(monkeypatch
 
 
 def test_sync_expedition_files_recurses_and_classifies_supported_files(monkeypatch, sd, tmp_path):
-    submission = folder(sd, "submission", "上繳航跡與紀錄")
+    submission = folder(sd, "submission", "行後航跡與紀錄")
     maps = folder(sd, "maps", "地圖")
     ignored = folder(sd, "ignored", "其他資料")
     tree = {
