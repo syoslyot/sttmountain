@@ -438,6 +438,7 @@ def build_expedition_entry(
             "drive_file_id": zhijian["id"],
             "name": zhijian["name"],
             "local_path": str(xlsx_dest),
+            "modified_time": zhijian.get("modifiedTime", ""),
         },
         **files,
     }
